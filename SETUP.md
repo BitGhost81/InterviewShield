@@ -1,8 +1,14 @@
-# Database configuration
-	# Run these commands in Windows CMD:
+git clone https://github.com/BitGhost81/InterviewShield.git
 
-setx DB_URL "jdbc:mysql://localhost:3306/interviewshield"
-setx DB_USER "root"
-setx DB_PASSWORD "YOUR_MYSQL_PASSWORD"
+:: Create MySQL database first
+	CREATE DATABASE interviewshield;
 
-# After running them, restart your terminal/IDE.
+:: Configure database
+	setx DB_URL "jdbc:mysql://localhost:3306/interviewshield"
+	setx DB_USER "root"
+	setx DB_PASSWORD "YOUR_MYSQL_PASSWORD"
+
+:: Frontend
+	cd app
+	npm install
+	npm run dev
