@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { initializeApp, getApps } from 'firebase/app';
 import { getDatabase, ref, onValue, set, update, increment } from 'firebase/database';
 import axios from 'axios';
+import { useRealtimeSession } from './hooks/useRealtimeSession';
+import { MESSAGE_TYPES } from './realtime/messages';
 
 const firebaseConfig = {
     apiKey: "AIzaSyC2uS-fcWCYzMyQqCy72EkBl8CWdoLCpus",
@@ -22,11 +24,10 @@ const API = 'http://localhost:8081/api';
 
 export default function InterviewPage() {
     const { sessionCode } = useParams();
-    const navigate = useNavigate();
     const [session, setSession] = useState(null);
     const [editorRef, setEditorRef] = useState(null);
     const [tabSwitches, setTabSwitches] = useState(0);
-    const [snapshotCount, setSnapshotCount] = useState(0);
+    const [, setSnapshotCount] = useState(0);
     const videoRef = useRef(null);
     const streamRef = useRef(null);
     const candidateId = parseInt(localStorage.getItem('userId'));
@@ -34,6 +35,44 @@ export default function InterviewPage() {
     const headers = { Authorization: `Bearer ${token}` };
     const [output, setOutput] = useState('');
     const [showConsole, setShowConsole] = useState(false);
+    const codeVersionRef = useRef(0);
+    const realtimeSendRef = useRef(null);
+    const realtimeConnectedRef = useRef(false);
+
+    const sendCodeSnapshot = useCallback(() => {
+        if (!editorRef) return;
+        realtimeSendRef.current?.(MESSAGE_TYPES.CODE_SNAPSHOT, {
+            version: codeVersionRef.current,
+            content: editorRef.getValue(),
+        });
+    }, [editorRef]);
+
+    const { status: realtimeStatus, error: realtimeError, send: sendRealtime } = useRealtimeSession({
+        sessionCode,
+        role: 'candidate',
+        userId: candidateId,
+        token,
+        onMessage: (message) => {
+            if (message.type === MESSAGE_TYPES.PRESENCE && message.payload?.interviewerConnected) {
+                sendCodeSnapshot();
+            }
+
+            if (message.type === MESSAGE_TYPES.CODE_RESYNC) {
+                sendCodeSnapshot();
+            }
+        },
+    });
+
+    useEffect(() => {
+        realtimeSendRef.current = sendRealtime;
+    }, [sendRealtime]);
+
+    useEffect(() => {
+        realtimeConnectedRef.current = realtimeStatus === 'connected';
+        if (realtimeStatus === 'connected') {
+            sendCodeSnapshot();
+        }
+    }, [realtimeStatus, editorRef, sendCodeSnapshot]);
 
     // Load session details
     useEffect(() => {
@@ -113,6 +152,7 @@ export default function InterviewPage() {
         let suppress = false;
 
         onValue(docRef, (snapshot) => {
+            if (realtimeConnectedRef.current) return;
             const data = snapshot.val();
             if (!data) return;
             const remote = data.content || '';
@@ -126,10 +166,28 @@ export default function InterviewPage() {
             }
         });
 
-        editor.onDidChangeModelContent(() => {
+        editor.onDidChangeModelContent((event) => {
             if (suppress) return;
-            set(docRef, { content: editor.getValue() });
+            const previousVersion = codeVersionRef.current;
+            codeVersionRef.current += 1;
+
+            const sent = realtimeSendRef.current?.(MESSAGE_TYPES.CODE_DELTA, {
+                previousVersion,
+                version: codeVersionRef.current,
+                changes: event.changes,
+            });
+
+            if (!sent) {
+                set(docRef, { content: editor.getValue() });
+            }
         });
+
+        if (realtimeConnectedRef.current) {
+            realtimeSendRef.current?.(MESSAGE_TYPES.CODE_SNAPSHOT, {
+                version: codeVersionRef.current,
+                content: editor.getValue(),
+            });
+        }
     };
 
     // Submit code
@@ -222,6 +280,9 @@ export default function InterviewPage() {
                 <div className="flex items-center gap-6">
                     <div className="text-sm text-gray-400">
                         Session: <span className="text-blue-400 font-mono font-bold">{sessionCode}</span>
+                    </div>
+                    <div className={`text-xs ${realtimeStatus === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>
+                        Realtime: {realtimeError || realtimeStatus}
                     </div>
                     {tabSwitches > 0 && (
                         <div className="px-3 py-1 bg-red-600/20 text-red-400 rounded-full text-xs font-medium">
