@@ -4,6 +4,8 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getDatabase, ref, onValue } from 'firebase/database';
 import axios from 'axios';
 import Editor from '@monaco-editor/react';
+import { useRealtimeSession } from './hooks/useRealtimeSession';
+import { MESSAGE_TYPES } from './realtime/messages';
 
 const firebaseConfig = {
     apiKey: "AIzaSyC2uS-fcWCYzMyQqCy72EkBl8CWdoLCpus",
@@ -26,10 +28,59 @@ export default function MonitorPage() {
     const [report, setReport] = useState(null);
     const [selectedCandidate, setSelectedCandidate] = useState(null);
     const token = localStorage.getItem('token');
-    if (!token) { navigate('/login'); return null; }
     const headers = { Authorization: `Bearer ${token}` };
     const [liveCode, setLiveCode] = useState(null);
     const [candidateCode, setCandidateCode] = useState('');
+    const codeVersionRef = React.useRef(0);
+    const editorRef = React.useRef(null);
+
+    const { status: realtimeStatus, error: realtimeError, send: sendRealtime } = useRealtimeSession({
+        sessionCode,
+        role: 'interviewer',
+        userId: localStorage.getItem('userId'),
+        token,
+        onMessage: (message) => {
+            if (message.type === MESSAGE_TYPES.PRESENCE && message.payload?.candidateConnected) {
+                sendRealtime(MESSAGE_TYPES.CODE_RESYNC, {
+                    reason: 'interviewer_joined',
+                    currentVersion: codeVersionRef.current,
+                });
+            }
+
+            if (message.type === MESSAGE_TYPES.CODE_SNAPSHOT) {
+                const content = message.payload?.content || '';
+                const version = Number(message.payload?.version || 0);
+                setCandidateCode(content);
+                codeVersionRef.current = version;
+                editorRef.current?.setValue(content);
+            }
+
+            if (message.type === MESSAGE_TYPES.CODE_DELTA) {
+                const previousVersion = Number(message.payload?.previousVersion);
+                const version = Number(message.payload?.version);
+                const changes = message.payload?.changes || [];
+
+                if (previousVersion !== codeVersionRef.current) {
+                    sendRealtime(MESSAGE_TYPES.CODE_RESYNC, {
+                        reason: 'version_mismatch',
+                        currentVersion: codeVersionRef.current,
+                    });
+                    return;
+                }
+
+                if (editorRef.current && changes.length > 0) {
+                    editorRef.current.executeEdits('remote-code-sync', changes.map(change => ({
+                        range: change.range,
+                        text: change.text,
+                        forceMoveMarkers: true,
+                    })));
+                    setCandidateCode(editorRef.current.getValue());
+                }
+
+                codeVersionRef.current = version;
+            }
+        },
+    });
 
     // Live alerts from Firebase
     useEffect(() => {
@@ -42,14 +93,14 @@ export default function MonitorPage() {
     }, [sessionCode]);
 
     useEffect(() => {
-        if (!liveCode) return;
+        if (!liveCode || realtimeStatus === 'connected') return;
         const codeRef = ref(db, `documents/${sessionCode}`);
         const unsub = onValue(codeRef, (snapshot) => {
             const data = snapshot.val();
             if (data) setCandidateCode(data.content || '');
         });
         return () => unsub();
-    }, [liveCode, sessionCode]);
+    }, [liveCode, sessionCode, realtimeStatus]);
 
     const loadReport = async (candidateId) => {
         try {
@@ -76,6 +127,8 @@ export default function MonitorPage() {
         return 'LOW RISK';
     };
 
+    if (!token) { navigate('/login'); return null; }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white">
 
@@ -87,6 +140,9 @@ export default function MonitorPage() {
                 <div className="flex items-center gap-4">
                     <span className="text-gray-400 text-sm">Monitoring Session:</span>
                     <span className="font-mono font-bold text-blue-400 text-lg">{sessionCode}</span>
+                    <span className={`text-xs ${realtimeStatus === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>
+                        Realtime: {realtimeError || realtimeStatus}
+                    </span>
                 </div>
                 <button
                     onClick={() => navigate('/dashboard')}
@@ -166,6 +222,9 @@ export default function MonitorPage() {
                                 language="javascript"
                                 value={candidateCode}
                                 theme="vs-dark"
+                                onMount={(editor) => {
+                                    editorRef.current = editor;
+                                }}
                                 options={{
                                     readOnly: true,
                                     fontSize: 13,

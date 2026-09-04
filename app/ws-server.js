@@ -9,6 +9,9 @@ const ROLES = new Set(['candidate', 'interviewer']);
 const JOIN_SESSION = 'join_session';
 const LEAVE_SESSION = 'leave_session';
 const PRESENCE = 'presence';
+const CODE_SNAPSHOT = 'code_snapshot';
+const CODE_DELTA = 'code_delta';
+const CODE_RESYNC = 'code_resync';
 const ERROR = 'error';
 
 const rooms = new Map();
@@ -59,7 +62,12 @@ wss.on('connection', (socket) => {
       return;
     }
 
-    sendError(socket, 'unsupported_message', `Message type "${message.type}" is not supported in Phase 1.`);
+    if ([CODE_SNAPSHOT, CODE_DELTA, CODE_RESYNC].includes(message.type)) {
+      relayCodeMessage(socket, message);
+      return;
+    }
+
+    sendError(socket, 'unsupported_message', `Message type "${message.type}" is not supported.`);
   });
 
   socket.on('close', () => removeSocket(socket));
@@ -169,6 +177,34 @@ function broadcastPresence(sessionCode) {
       payload,
     });
   }
+}
+
+function relayCodeMessage(socket, message) {
+  const room = rooms.get(socket.context.sessionCode);
+  const targetRole = socket.context.role === 'candidate' ? 'interviewer' : 'candidate';
+
+  if (!room) {
+    sendError(socket, 'room_not_found', 'Realtime session room was not found.');
+    return;
+  }
+
+  if ([CODE_SNAPSHOT, CODE_DELTA].includes(message.type) && socket.context.role !== 'candidate') {
+    sendError(socket, 'unauthorized', 'Only the candidate may send live code updates.');
+    return;
+  }
+
+  if (message.type === CODE_RESYNC && socket.context.role !== 'interviewer') {
+    sendError(socket, 'unauthorized', 'Only the interviewer may request code resync.');
+    return;
+  }
+
+  send(room[targetRole], {
+    type: message.type,
+    sessionCode: socket.context.sessionCode,
+    senderRole: socket.context.role,
+    senderId: socket.context.senderId,
+    payload: message.payload || {},
+  });
 }
 
 async function verifySessionExists(sessionCode, token) {
