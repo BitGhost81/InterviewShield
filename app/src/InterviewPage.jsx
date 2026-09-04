@@ -149,27 +149,67 @@ export default function InterviewPage() {
         }
     };
     //run code
-    const runCode = () => {
+    const runCode = async () => {
         if (!editorRef) return;
         const userCode = editorRef.getValue();
-        let consoleOutput = '';
-
-        const originalLog = console.log;
-        console.log = (...args) => {
-            consoleOutput += args.join(' ') + '\n';
-            originalLog(...args);
-        };
-
-        try {
-            const result = new Function(userCode)();
-            if (result !== undefined) consoleOutput += `\nReturned: ${result}\n`;
-        } catch (err) {
-            consoleOutput += `\nError: ${err.message}\n`;
-        }
-
-        console.log = originalLog;
+        const consoleOutput = await runInSandbox(userCode);
         setOutput(consoleOutput);
         setShowConsole(true);
+    };
+
+    const runInSandbox = (userCode) => {
+        return new Promise((resolve) => {
+            const iframe = document.createElement('iframe');
+            const timeoutMs = 3000;
+            const safeUserCode = JSON.stringify(userCode).replaceAll('</', '<\\/');
+            const script = `
+                const send = (payload) => parent.postMessage({ type: 'run-code-result', payload }, '*');
+                let consoleOutput = '';
+                console.log = (...args) => {
+                    consoleOutput += args.map(String).join(' ') + '\\n';
+                };
+                const blockedPrint = () => {
+                    throw new Error('Browser print is not available in Run Code. Use console.log(...) for output.');
+                };
+                Object.defineProperty(window, 'print', { value: blockedPrint, writable: false });
+                try {
+                    const result = (0, eval)(${safeUserCode});
+                    if (result !== undefined) consoleOutput += '\\nReturned: ' + String(result) + '\\n';
+                    send({ output: consoleOutput });
+                } catch (err) {
+                    send({ output: consoleOutput + '\\nError: ' + err.message + '\\n' });
+                }
+            `;
+            let settled = false;
+
+            const cleanup = () => {
+                window.removeEventListener('message', handleMessage);
+                iframe.remove();
+            };
+
+            const finish = (value) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(value);
+            };
+
+            const timer = setTimeout(() => {
+                finish('Error: Code execution timed out');
+            }, timeoutMs);
+
+            const handleMessage = (event) => {
+                if (event.source !== iframe.contentWindow || event.data?.type !== 'run-code-result') return;
+                clearTimeout(timer);
+                finish(event.data.payload.output || '// No output yet');
+            };
+
+            iframe.sandbox = 'allow-scripts';
+            iframe.style.display = 'none';
+            iframe.srcdoc = `<script>${script}</` + 'script>';
+            window.addEventListener('message', handleMessage);
+            document.body.appendChild(iframe);
+        });
     };
     return (
         <div className="h-screen flex flex-col bg-gray-950 text-white">

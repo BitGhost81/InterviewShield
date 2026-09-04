@@ -23,7 +23,7 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> register(@RequestBody RegisterRequest request) {
         Map<String, Object> response = authService.register(request);
-        if (response.containsKey("error")) {
+        if (response.containsKey("Error")) {
             return ResponseEntity.badRequest().body(response);
         }
         return ResponseEntity.ok(response);
@@ -32,7 +32,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest request) {
         Map<String, Object> response = authService.login(request);
-        if (response.containsKey("error")) {
+        if (response.containsKey("Error")) {
             return ResponseEntity.badRequest().body(response);
         }
         return ResponseEntity.ok(response);
