@@ -17,7 +17,7 @@ public class InterviewSession {
 	
 	private String title;
 	
-	@Column(columnDefinition = "NEXT")
+	@Column(columnDefinition = "TEXT")
 	private String problemStatement;
 	
 	private Long createdBy;
