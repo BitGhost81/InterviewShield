@@ -1,6 +1,6 @@
 # InterviewShield Realtime Architecture
 
-This document is an implementation blueprint. It describes the planned architecture only. It is not implemented yet.
+This document describes the implemented realtime architecture. Firebase and webcam snapshots remain temporarily as documented fallback/legacy systems.
 
 ## Target Architecture
 

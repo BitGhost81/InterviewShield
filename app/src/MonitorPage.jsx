@@ -6,6 +6,9 @@ import axios from 'axios';
 import Editor from '@monaco-editor/react';
 import { useRealtimeSession } from './hooks/useRealtimeSession';
 import { MESSAGE_TYPES } from './realtime/messages';
+import { useWebRTCCall } from './hooks/useWebRTCCall';
+import { ConnectionStatus } from './components/ConnectionStatus';
+import { VideoCallPanel } from './components/VideoCallPanel';
 
 const firebaseConfig = {
     apiKey: "AIzaSyC2uS-fcWCYzMyQqCy72EkBl8CWdoLCpus",
@@ -33,8 +36,9 @@ export default function MonitorPage() {
     const [candidateCode, setCandidateCode] = useState('');
     const codeVersionRef = React.useRef(0);
     const editorRef = React.useRef(null);
+    const webRtcSignalRef = React.useRef(null);
 
-    const { status: realtimeStatus, error: realtimeError, send: sendRealtime } = useRealtimeSession({
+    const { status: realtimeStatus, presence, send: sendRealtime } = useRealtimeSession({
         sessionCode,
         role: 'interviewer',
         userId: localStorage.getItem('userId'),
@@ -79,8 +83,43 @@ export default function MonitorPage() {
 
                 codeVersionRef.current = version;
             }
+
+            if (message.type === MESSAGE_TYPES.TAB_SWITCH) {
+                const candidateId = String(message.payload?.candidateId || message.senderId || 'candidate');
+                setAlerts((previous) => ({
+                    ...previous,
+                    [candidateId]: {
+                        ...previous[candidateId],
+                        tabSwitches: message.payload?.count || (previous[candidateId]?.tabSwitches || 0) + 1,
+                        lastAlert: message.payload?.occurredAt || new Date().toISOString(),
+                        currentlyAway: true,
+                    },
+                }));
+            }
+
+            if (message.type === MESSAGE_TYPES.TAB_RETURN) {
+                const candidateId = String(message.payload?.candidateId || message.senderId || 'candidate');
+                setAlerts((previous) => ({
+                    ...previous,
+                    [candidateId]: { ...previous[candidateId], currentlyAway: false, lastReturn: message.payload?.occurredAt },
+                }));
+            }
+
+            if ([MESSAGE_TYPES.WEBRTC_OFFER, MESSAGE_TYPES.WEBRTC_ANSWER, MESSAGE_TYPES.WEBRTC_ICE_CANDIDATE].includes(message.type)) {
+                webRtcSignalRef.current?.(message);
+            }
         },
     });
+
+    const call = useWebRTCCall({
+        isInitiator: false,
+        peerConnected: Boolean(presence?.candidateConnected),
+        sendSignal: sendRealtime,
+    });
+
+    useEffect(() => {
+        webRtcSignalRef.current = call.handleSignal;
+    }, [call.handleSignal]);
 
     // Live alerts from Firebase
     useEffect(() => {
@@ -140,9 +179,7 @@ export default function MonitorPage() {
                 <div className="flex items-center gap-4">
                     <span className="text-gray-400 text-sm">Monitoring Session:</span>
                     <span className="font-mono font-bold text-blue-400 text-lg">{sessionCode}</span>
-                    <span className={`text-xs ${realtimeStatus === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>
-                        Realtime: {realtimeError || realtimeStatus}
-                    </span>
+                    <ConnectionStatus realtimeStatus={realtimeStatus} presence={presence} />
                 </div>
                 <button
                     onClick={() => navigate('/dashboard')}
@@ -160,6 +197,10 @@ export default function MonitorPage() {
                         Live Monitoring
                         <span className="ml-3 inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
                     </h2>
+
+                    <div className="mb-6 max-w-md">
+                        <VideoCallPanel {...call} />
+                    </div>
 
                     {Object.keys(alerts).length === 0 ? (
                         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center text-gray-500">
@@ -190,6 +231,12 @@ export default function MonitorPage() {
                                     {data.tabSwitches > 3 && (
                                         <div className="mb-4 px-3 py-2 bg-red-600/20 border border-red-600/30 rounded-lg text-red-400 text-sm">
                                             ⚠️ Suspicious activity detected
+                                        </div>
+                                    )}
+
+                                    {data.currentlyAway && (
+                                        <div className="mb-4 px-3 py-2 bg-red-600/20 border border-red-600/30 rounded-lg text-red-400 text-sm">
+                                            ⚠️ Candidate is currently away from the interview tab
                                         </div>
                                     )}
 

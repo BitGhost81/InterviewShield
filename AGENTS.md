@@ -76,6 +76,13 @@ jdbc:mysql://localhost:3306/interviewshield
 
 The backend runs on port `8081`.
 
+The realtime relay runs separately on port `1234`:
+
+```text
+cd app
+npm run realtime
+```
+
 ## Existing Constraints
 
 - Do not assume Firebase, WebSocket, or WebRTC behavior without checking the current code.
@@ -144,20 +151,16 @@ When WebSocket/WebRTC work begins, also verify:
 
 Current implemented realtime behavior:
 
-- Firebase Realtime Database mirrors full editor content.
-- Firebase carries live tab-switch alert counts.
-- Webcam snapshots are periodically captured and stored through REST logs.
-- `app/ws-server.js` exists but is not used by the app.
+- An authenticated, session-isolated Node WebSocket relay at `app/ws-server.js` is used by the React app for candidate-authoritative code synchronization and presence.
+- Firebase Realtime Database remains as a temporary fallback for code mirroring and tab-switch counts.
+- Tab switches are persisted through REST and also sent as WebSocket alerts.
+- WebRTC uses that WebSocket relay solely for session-scoped offer/answer/ICE signaling; media travels peer-to-peer.
+- Webcam snapshots are still periodically captured and stored through REST logs as a legacy system.
 
 Planned but NOT implemented yet:
 
-- WebSocket server for realtime control/data messages.
-- WebSocket-based live candidate-to-interviewer code sync.
-- WebSocket-based presence.
-- WebSocket-based WebRTC signaling.
-- WebRTC 1-to-1 video/audio between candidate and interviewer.
-- Removal of Firebase realtime sync.
-- Removal of webcam snapshots.
+- Removal of Firebase realtime sync after WebSocket behavior is manually verified.
+- Removal of webcam snapshots after live video behavior is manually verified.
 
 Planned architecture:
 
