@@ -323,4 +323,4 @@ function timingSafeEqualString(a, b) {
   return aBuffer.length === bBuffer.length && timingSafeEqual(aBuffer, bBuffer);
 }
 
-console.log(`Realtime WebSocket server running at ws://localhost:${PORT}`);
+console.log(`Realtime WebSocket server running on port ${PORT}`);

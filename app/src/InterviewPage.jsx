@@ -23,7 +23,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getDatabase(app);
 
-const API = 'http://localhost:8081/api';
+const API = 'http://192.168.1.9:8081/api';
 
 export default function InterviewPage() {
     const { sessionCode } = useParams();

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API = 'http://localhost:8081/api';
+const API = 'http://192.168.1.9:8081/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();

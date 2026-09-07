@@ -13,5 +13,5 @@ export const MESSAGE_TYPES = {
     ERROR: 'error',
 };
 
-export const REALTIME_URL = 'ws://localhost:1234';
+export const REALTIME_URL = 'ws://192.168.1.9:1234';
 
