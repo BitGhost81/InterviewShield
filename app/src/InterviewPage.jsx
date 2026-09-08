@@ -6,6 +6,9 @@ import { getDatabase, ref, onValue, set, update, increment } from 'firebase/data
 import axios from 'axios';
 import { useRealtimeSession } from './hooks/useRealtimeSession';
 import { MESSAGE_TYPES } from './realtime/messages';
+import { useWebRTCCall } from './hooks/useWebRTCCall';
+import { ConnectionStatus } from './components/ConnectionStatus';
+import { VideoCallPanel } from './components/VideoCallPanel';
 
 const firebaseConfig = {
     apiKey: "AIzaSyC2uS-fcWCYzMyQqCy72EkBl8CWdoLCpus",
@@ -20,7 +23,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getDatabase(app);
 
-const API = 'http://localhost:8081/api';
+const API = 'http://192.168.1.9:8081/api';
 
 export default function InterviewPage() {
     const { sessionCode } = useParams();
@@ -28,16 +31,14 @@ export default function InterviewPage() {
     const [editorRef, setEditorRef] = useState(null);
     const [tabSwitches, setTabSwitches] = useState(0);
     const [, setSnapshotCount] = useState(0);
-    const videoRef = useRef(null);
-    const streamRef = useRef(null);
     const candidateId = parseInt(localStorage.getItem('userId'));
     const token = localStorage.getItem('token');
-    const headers = { Authorization: `Bearer ${token}` };
     const [output, setOutput] = useState('');
     const [showConsole, setShowConsole] = useState(false);
     const codeVersionRef = useRef(0);
     const realtimeSendRef = useRef(null);
     const realtimeConnectedRef = useRef(false);
+    const webRtcSignalRef = useRef(null);
 
     const sendCodeSnapshot = useCallback(() => {
         if (!editorRef) return;
@@ -47,7 +48,7 @@ export default function InterviewPage() {
         });
     }, [editorRef]);
 
-    const { status: realtimeStatus, error: realtimeError, send: sendRealtime } = useRealtimeSession({
+    const { status: realtimeStatus, presence, send: sendRealtime } = useRealtimeSession({
         sessionCode,
         role: 'candidate',
         userId: candidateId,
@@ -60,8 +61,22 @@ export default function InterviewPage() {
             if (message.type === MESSAGE_TYPES.CODE_RESYNC) {
                 sendCodeSnapshot();
             }
+
+            if ([MESSAGE_TYPES.WEBRTC_OFFER, MESSAGE_TYPES.WEBRTC_ANSWER, MESSAGE_TYPES.WEBRTC_ICE_CANDIDATE].includes(message.type)) {
+                webRtcSignalRef.current?.(message);
+            }
         },
     });
+
+    const call = useWebRTCCall({
+        isInitiator: true,
+        peerConnected: Boolean(presence?.interviewerConnected),
+        sendSignal: sendRealtime,
+    });
+
+    useEffect(() => {
+        webRtcSignalRef.current = call.handleSignal;
+    }, [call.handleSignal]);
 
     useEffect(() => {
         realtimeSendRef.current = sendRealtime;
@@ -76,25 +91,15 @@ export default function InterviewPage() {
 
     // Load session details
     useEffect(() => {
+        const headers = { Authorization: `Bearer ${token}` };
         axios.get(`${API}/sessions/${sessionCode}`, { headers })
             .then(res => setSession(res.data))
             .catch(() => alert('Session not found'));
-    }, [sessionCode]);
-
-    // Start webcam
-    useEffect(() => {
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                streamRef.current = stream;
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                }
-            })
-            .catch(() => alert('Webcam access required for this interview'));
-    }, []);
+    }, [sessionCode, token]);
 
     // Tab switch detection
     useEffect(() => {
+        const headers = { Authorization: `Bearer ${token}` };
         const handleVisibilityChange = () => {
             if (document.hidden) {
                 const timestamp = new Date().toISOString();
@@ -113,23 +118,35 @@ export default function InterviewPage() {
                     lastAlert: timestamp
                 });
 
+                realtimeSendRef.current?.(MESSAGE_TYPES.TAB_SWITCH, {
+                    candidateId,
+                    occurredAt: timestamp,
+                    count: tabSwitches + 1,
+                });
+
                 setTabSwitches(prev => prev + 1);
+            } else {
+                realtimeSendRef.current?.(MESSAGE_TYPES.TAB_RETURN, {
+                    candidateId,
+                    occurredAt: new Date().toISOString(),
+                });
             }
         };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [sessionCode, candidateId]);
+    }, [sessionCode, candidateId, tabSwitches, token]);
 
     // Webcam snapshot every 30 seconds
     useEffect(() => {
+        const headers = { Authorization: `Bearer ${token}` };
         const interval = setInterval(() => {
-            if (!videoRef.current || !streamRef.current) return;
+            if (!call.localVideoRef.current) return;
 
             const canvas = document.createElement('canvas');
             canvas.width = 320;
             canvas.height = 240;
-            canvas.getContext('2d').drawImage(videoRef.current, 0, 0, 320, 240);
+            canvas.getContext('2d').drawImage(call.localVideoRef.current, 0, 0, 320, 240);
             const base64 = canvas.toDataURL('image/jpeg', 0.5);
 
             axios.post(`${API}/logs`, {
@@ -143,7 +160,7 @@ export default function InterviewPage() {
         }, 30000);
 
         return () => clearInterval(interval);
-    }, [sessionCode, candidateId]);
+    }, [sessionCode, candidateId, call.localVideoRef, token]);
 
     // Monaco sync with Firebase
     const handleEditorMount = (editor) => {
@@ -194,6 +211,7 @@ export default function InterviewPage() {
     const submitCode = async () => {
         if (!editorRef) return;
         const code = editorRef.getValue();
+        const headers = { Authorization: `Bearer ${token}` };
         try {
             await axios.post(`${API}/logs`, {
                 sessionCode,
@@ -281,9 +299,7 @@ export default function InterviewPage() {
                     <div className="text-sm text-gray-400">
                         Session: <span className="text-blue-400 font-mono font-bold">{sessionCode}</span>
                     </div>
-                    <div className={`text-xs ${realtimeStatus === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>
-                        Realtime: {realtimeError || realtimeStatus}
-                    </div>
+                    <ConnectionStatus realtimeStatus={realtimeStatus} presence={presence} />
                     {tabSwitches > 0 && (
                         <div className="px-3 py-1 bg-red-600/20 text-red-400 rounded-full text-xs font-medium">
                             ⚠️ {tabSwitches} tab switch{tabSwitches > 1 ? 'es' : ''} detected
@@ -312,16 +328,8 @@ export default function InterviewPage() {
                     <h2 className="text-lg font-bold mb-4">{session?.title}</h2>
                     <p className="text-gray-400 text-sm leading-relaxed">{session?.problemStatement}</p>
 
-                    {/* Webcam preview */}
                     <div className="mt-8">
-                        <h3 className="font-semibold text-gray-300 mb-2 text-sm uppercase tracking-wide">Camera</h3>
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            muted
-                            className="w-full rounded-xl border border-gray-700"
-                        />
-                        <p className="text-gray-500 text-xs mt-2 text-center">You are being monitored</p>
+                        <VideoCallPanel {...call} />
                     </div>
                 </div>
 

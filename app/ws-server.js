@@ -1,4 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createServer as createHttpsServer } from 'node:https';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 
 const PORT = Number(process.env.REALTIME_PORT || 1234);
@@ -12,11 +16,25 @@ const PRESENCE = 'presence';
 const CODE_SNAPSHOT = 'code_snapshot';
 const CODE_DELTA = 'code_delta';
 const CODE_RESYNC = 'code_resync';
+const TAB_SWITCH = 'tab_switch';
+const TAB_RETURN = 'tab_return';
+const WEBRTC_OFFER = 'webrtc_offer';
+const WEBRTC_ANSWER = 'webrtc_answer';
+const WEBRTC_ICE_CANDIDATE = 'webrtc_ice_candidate';
 const ERROR = 'error';
 
 const rooms = new Map();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const httpsServer = createHttpsServer({
+  key: readFileSync(resolve(__dirname, '192.168.1.9+2-key.pem')),
+  cert: readFileSync(resolve(__dirname, '192.168.1.9+2.pem')),
+});
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ server: httpsServer });
+
+httpsServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Secure realtime WebSocket server running on wss://192.168.1.9:${PORT}`);
+});
 
 wss.on('connection', (socket) => {
   socket.context = null;
@@ -62,8 +80,9 @@ wss.on('connection', (socket) => {
       return;
     }
 
-    if ([CODE_SNAPSHOT, CODE_DELTA, CODE_RESYNC].includes(message.type)) {
-      relayCodeMessage(socket, message);
+    if ([CODE_SNAPSHOT, CODE_DELTA, CODE_RESYNC, TAB_SWITCH, TAB_RETURN,
+      WEBRTC_OFFER, WEBRTC_ANSWER, WEBRTC_ICE_CANDIDATE].includes(message.type)) {
+      relaySessionMessage(socket, message);
       return;
     }
 
@@ -113,6 +132,12 @@ async function handleJoin(socket, message) {
 
   const room = getRoom(sessionCode);
   const existingSocket = room[requestedRole];
+
+  if (requestedRole === 'candidate' && existingSocket && existingSocket !== socket) {
+    sendError(socket, 'session_occupied', 'A candidate is already connected to this session.');
+    closeSocket(socket, 4003, 'Candidate slot occupied');
+    return;
+  }
 
   socket.context = {
     sessionCode,
@@ -179,7 +204,7 @@ function broadcastPresence(sessionCode) {
   }
 }
 
-function relayCodeMessage(socket, message) {
+function relaySessionMessage(socket, message) {
   const room = rooms.get(socket.context.sessionCode);
   const targetRole = socket.context.role === 'candidate' ? 'interviewer' : 'candidate';
 
@@ -195,6 +220,17 @@ function relayCodeMessage(socket, message) {
 
   if (message.type === CODE_RESYNC && socket.context.role !== 'interviewer') {
     sendError(socket, 'unauthorized', 'Only the interviewer may request code resync.');
+    return;
+  }
+
+  if ([TAB_SWITCH, TAB_RETURN].includes(message.type) && socket.context.role !== 'candidate') {
+    sendError(socket, 'unauthorized', 'Only the candidate may send tab activity alerts.');
+    return;
+  }
+
+  if ([WEBRTC_OFFER, WEBRTC_ANSWER, WEBRTC_ICE_CANDIDATE].includes(message.type)
+    && !ROLES.has(socket.context.role)) {
+    sendError(socket, 'unauthorized', 'Only session participants may send WebRTC signaling.');
     return;
   }
 
@@ -305,5 +341,3 @@ function timingSafeEqualString(a, b) {
   const bBuffer = Buffer.from(b);
   return aBuffer.length === bBuffer.length && timingSafeEqual(aBuffer, bBuffer);
 }
-
-console.log(`Realtime WebSocket server running at ws://localhost:${PORT}`);

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useParams, Link, Navigate } from 'react-router-dom';
-import Editor from '@monaco-editor/react';
 
 
 // Backend integration 
@@ -9,65 +8,7 @@ import MonitorPage from './MonitorPage';
 import InterviewPage from './InterviewPage';
 import Dashboard from './Dashboard';
 import Auth from './Auth';
-import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onValue, set } from 'firebase/database';
-
-const firebaseConfig = {
-  apiKey: "AIzaSyC2uS-fcWCYzMyQqCy72EkBl8CWdoLCpus",
-  authDomain: "collab-editor-44d5f.firebaseapp.com",
-  databaseURL: "https://collab-editor-44d5f-default-rtdb.firebaseio.com",
-  projectId: "collab-editor-44d5f",
-  storageBucket: "collab-editor-44d5f.firebasestorage.app",
-  messagingSenderId: "679361511798",
-  appId: "1:679361511798:web:ad5885e20b9784cebd7a57"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-function initializeRealtimeSync(editor, roomId) {
-  const docRef = ref(db, `documents/${roomId}`);
-
-  let suppress = false;
-
-  // Listen for remote changes
-  onValue(docRef, (snapshot) => {
-    const data = snapshot.val();
-    if (!data) return;
-
-    const remote = data.content || "";
-    const local = editor.getValue();
-
-    if (remote !== local) {
-      suppress = true;
-      const pos = editor.getPosition();
-      editor.setValue(remote);
-      if (pos) editor.setPosition(pos);
-      suppress = false;
-    }
-  });
-
-  // Push local edits
-  editor.onDidChangeModelContent(() => {
-    if (suppress) return;
-    const content = editor.getValue();
-    set(docRef, { content });
-  });
-}
-
-
-// Utility function to generate random session ID
-const generateSessionId = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let id = '';
-  for (let i = 0; i < 6; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-};
-
-
-
+import { probeRealtimeJoin } from './realtime/realtimeClient';
 
 
 // Join Page Component
@@ -75,15 +16,44 @@ function JoinPage() {
   const navigate = useNavigate();
   const [sessionId, setSessionId] = useState('');
   const [fadeIn, setFadeIn] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState('');
+  const token = localStorage.getItem('token');
+  const userId = localStorage.getItem('userId');
 
   useEffect(() => {
     setFadeIn(true);
   }, []);
 
-  const handleJoin = (e) => {
+  const handleJoin = async (e) => {
     e.preventDefault();
-    if (sessionId.trim()) {
-     navigate(`/interview/${sessionId.trim().toUpperCase()}`);
+    const code = sessionId.trim().toUpperCase();
+    if (!code || !token) return;
+
+    setJoining(true);
+    setError('');
+
+    try {
+      await probeRealtimeJoin({
+        sessionCode: code,
+        role: 'candidate',
+        userId,
+        token,
+      });
+
+      sessionStorage.setItem(
+        `interviewshield:join:${userId}:${code}`,
+        JSON.stringify({ sessionCode: code, role: 'candidate', joinedAt: Date.now() })
+      );
+      navigate(`/interview/${code}`);
+    } catch (joinError) {
+      if (joinError?.code === 'session_occupied') {
+        setError('Session already has a candidate.');
+      } else {
+        setError(joinError?.message || 'Unable to join this session.');
+      }
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -121,17 +91,33 @@ function JoinPage() {
             />
           </div>
 
+          {error && (
+            <div className="text-red-400 text-sm text-center">{error}</div>
+          )}
+
           <button
             type="submit"
-            disabled={sessionId.length < 6}
+            disabled={sessionId.length < 6 || joining}
             className="w-full px-10 py-5 bg-white text-black rounded-2xl font-semibold text-lg hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-2xl shadow-white/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
-            Join Session
+            {joining ? 'Checking session...' : 'Join Session'}
           </button>
         </form>
       </div>
     </div>
   );
+}
+
+function CandidateInterviewRoute() {
+  const { sessionCode } = useParams();
+  const userId = localStorage.getItem('userId');
+  const joinKey = `interviewshield:join:${userId}:${sessionCode}`;
+
+  if (!sessionStorage.getItem(joinKey)) {
+    return <Navigate to="/join" replace />;
+  }
+
+  return <InterviewPage />;
 }
 
 // Main App Component with Router
@@ -144,7 +130,7 @@ export default function App() {
         <Route path="/join" element={<JoinPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/monitor/:sessionCode" element={<MonitorPage />} />
-        <Route path="/interview/:sessionCode" element={<InterviewPage />} />
+        <Route path="/interview/:sessionCode" element={<CandidateInterviewRoute />} />
         
         
       </Routes>
