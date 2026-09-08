@@ -1,12 +1,19 @@
 package com.interviewshield.backend.service;
 
 import com.interviewshield.backend.dto.CreateSessionRequest;
+import com.interviewshield.backend.model.ActivityLog;
 import com.interviewshield.backend.model.InterviewSession;
+import com.interviewshield.backend.model.User;
+import com.interviewshield.backend.repository.ActivityLogRepository;
 import com.interviewshield.backend.repository.SessionRepository;
+import com.interviewshield.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -15,6 +22,12 @@ public class SessionService {
 
     @Autowired
     private SessionRepository sessionRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private ActivityLogRepository activityLogRepository;
 
     private String generateSessionCode() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -46,6 +59,36 @@ public class SessionService {
         response.put("problemStatement", saved.getProblemStatement());
         response.put("status", saved.getStatus());
         response.put("createdBy", saved.getCreatedBy());
+        response.put("createdAt", saved.getCreatedAt());
+        return response;
+    }
+
+    public List<Map<String, Object>> getSessionsForInterviewer(String email) {
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            return new ArrayList<>();
+        }
+
+        List<InterviewSession> sessions = sessionRepository.findByCreatedByOrderByCreatedAtDesc(user.getId());
+        List<Map<String, Object>> response = new ArrayList<>();
+
+        for (InterviewSession session : sessions) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", session.getId());
+            item.put("sessionCode", session.getSessionCode());
+            item.put("title", session.getTitle());
+            item.put("status", session.getStatus());
+            item.put("createdBy", session.getCreatedBy());
+            item.put("createdAt", session.getCreatedAt());
+
+            ActivityLog latestCandidateLog = activityLogRepository
+                .findTopBySessionCodeAndCandidateIdIsNotNullOrderByCreatedAtDesc(session.getSessionCode())
+                .orElse(null);
+            item.put("candidateId", latestCandidateLog != null ? latestCandidateLog.getCandidateId() : null);
+
+            response.add(item);
+        }
+
         return response;
     }
 

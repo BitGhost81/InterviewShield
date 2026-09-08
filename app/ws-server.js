@@ -1,4 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createServer as createHttpsServer } from 'node:https';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 
 const PORT = Number(process.env.REALTIME_PORT || 1234);
@@ -20,8 +24,17 @@ const WEBRTC_ICE_CANDIDATE = 'webrtc_ice_candidate';
 const ERROR = 'error';
 
 const rooms = new Map();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const httpsServer = createHttpsServer({
+  key: readFileSync(resolve(__dirname, '192.168.1.9+2-key.pem')),
+  cert: readFileSync(resolve(__dirname, '192.168.1.9+2.pem')),
+});
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ server: httpsServer });
+
+httpsServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Secure realtime WebSocket server running on wss://192.168.1.9:${PORT}`);
+});
 
 wss.on('connection', (socket) => {
   socket.context = null;
@@ -119,6 +132,12 @@ async function handleJoin(socket, message) {
 
   const room = getRoom(sessionCode);
   const existingSocket = room[requestedRole];
+
+  if (requestedRole === 'candidate' && existingSocket && existingSocket !== socket) {
+    sendError(socket, 'session_occupied', 'A candidate is already connected to this session.');
+    closeSocket(socket, 4003, 'Candidate slot occupied');
+    return;
+  }
 
   socket.context = {
     sessionCode,
@@ -322,5 +341,3 @@ function timingSafeEqualString(a, b) {
   const bBuffer = Buffer.from(b);
   return aBuffer.length === bBuffer.length && timingSafeEqual(aBuffer, bBuffer);
 }
-
-console.log(`Realtime WebSocket server running on port ${PORT}`);

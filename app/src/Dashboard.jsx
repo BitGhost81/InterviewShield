@@ -10,12 +10,24 @@ export default function Dashboard() {
   const [problem, setProblem] = useState('');
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const userId = localStorage.getItem('userId');
   const userName = localStorage.getItem('userName');
   const token = localStorage.getItem('token');
-  if (!token) { navigate('/login'); return null; }
 
   const headers = { Authorization: `Bearer ${token}` };
+
+  useEffect(() => {
+    if (!token) return;
+
+    setHistoryLoading(true);
+    axios.get(`${API}/sessions/mine`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setSessions(res.data || []))
+      .catch(() => alert('Failed to load your sessions'))
+      .finally(() => setHistoryLoading(false));
+  }, [token]);
+
+  if (!token) { navigate('/login'); return null; }
 
   const createSession = async () => {
     if (!title || !problem) return alert('Fill in both fields');
@@ -31,7 +43,7 @@ export default function Dashboard() {
       setSessions(prev => [newSession, ...prev]);
       setTitle('');
       setProblem('');
-    } catch (err) {
+    } catch {
       alert('Failed to create session');
     } finally {
       setLoading(false);
@@ -91,40 +103,39 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Active Sessions */}
-        {sessions.length > 0 && (
-          <div>
-            <h2 className="text-2xl font-bold mb-6">Active Sessions</h2>
+        {/* My Sessions */}
+        <div>
+          <h2 className="text-2xl font-bold mb-6">My Sessions</h2>
+          {historyLoading ? (
+            <div className="text-gray-500 py-10">Loading sessions...</div>
+          ) : sessions.length > 0 ? (
             <div className="space-y-4">
               {sessions.map(session => (
                 <div key={session.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex items-center justify-between">
-                  <div>
+                  <div className="space-y-1">
                     <div className="font-semibold text-lg">{session.title}</div>
-                    <div className="text-gray-400 text-sm mt-1">{session.problemStatement.substring(0, 80)}...</div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-center">
-                      <div className="text-2xl font-mono font-bold text-blue-400">{session.sessionCode}</div>
-                      <div className="text-gray-500 text-xs">Session Code</div>
+                    <div className="text-gray-400 text-sm">Code: <span className="font-mono text-blue-400">{session.sessionCode}</span></div>
+                    <div className="text-gray-400 text-sm">Status: {session.status}</div>
+                    <div className="text-gray-400 text-sm">Candidate: {session.candidateId ?? 'Not joined yet'}</div>
+                    <div className="text-gray-500 text-xs">
+                      Created: {session.createdAt ? new Date(session.createdAt).toLocaleString() : 'N/A'}
                     </div>
-                    <button
-                      onClick={() => navigate(`/monitor/${session.sessionCode}`)}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Monitor
-                    </button>
                   </div>
+                  <button
+                    onClick={() => navigate(`/monitor/${session.sessionCode}`)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Open
+                  </button>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {sessions.length === 0 && (
-          <div className="text-center text-gray-500 py-20">
-            No sessions yet. Create one above.
-          </div>
-        )}
+          ) : (
+            <div className="text-center text-gray-500 py-20">
+              No sessions yet. Create one above.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

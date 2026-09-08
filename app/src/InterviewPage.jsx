@@ -33,7 +33,6 @@ export default function InterviewPage() {
     const [, setSnapshotCount] = useState(0);
     const candidateId = parseInt(localStorage.getItem('userId'));
     const token = localStorage.getItem('token');
-    const headers = { Authorization: `Bearer ${token}` };
     const [output, setOutput] = useState('');
     const [showConsole, setShowConsole] = useState(false);
     const codeVersionRef = useRef(0);
@@ -92,13 +91,15 @@ export default function InterviewPage() {
 
     // Load session details
     useEffect(() => {
+        const headers = { Authorization: `Bearer ${token}` };
         axios.get(`${API}/sessions/${sessionCode}`, { headers })
             .then(res => setSession(res.data))
             .catch(() => alert('Session not found'));
-    }, [sessionCode]);
+    }, [sessionCode, token]);
 
     // Tab switch detection
     useEffect(() => {
+        const headers = { Authorization: `Bearer ${token}` };
         const handleVisibilityChange = () => {
             if (document.hidden) {
                 const timestamp = new Date().toISOString();
@@ -134,10 +135,11 @@ export default function InterviewPage() {
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [sessionCode, candidateId, tabSwitches]);
+    }, [sessionCode, candidateId, tabSwitches, token]);
 
     // Webcam snapshot every 30 seconds
     useEffect(() => {
+        const headers = { Authorization: `Bearer ${token}` };
         const interval = setInterval(() => {
             if (!call.localVideoRef.current) return;
 
@@ -158,7 +160,7 @@ export default function InterviewPage() {
         }, 30000);
 
         return () => clearInterval(interval);
-    }, [sessionCode, candidateId, call.localVideoRef]);
+    }, [sessionCode, candidateId, call.localVideoRef, token]);
 
     // Monaco sync with Firebase
     const handleEditorMount = (editor) => {
@@ -209,6 +211,7 @@ export default function InterviewPage() {
     const submitCode = async () => {
         if (!editorRef) return;
         const code = editorRef.getValue();
+        const headers = { Authorization: `Bearer ${token}` };
         try {
             await axios.post(`${API}/logs`, {
                 sessionCode,

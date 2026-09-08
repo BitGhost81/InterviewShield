@@ -5,8 +5,10 @@ import com.interviewshield.backend.service.SessionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 
 import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/sessions")
@@ -19,6 +21,11 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> createSession(@RequestBody CreateSessionRequest request) {
         Map<String, Object> response = sessionService.createSession(request);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/mine")
+    public ResponseEntity<List<Map<String, Object>>> getMySessions(Authentication authentication) {
+        return ResponseEntity.ok(sessionService.getSessionsForInterviewer(authentication.getName()));
     }
 
     @GetMapping("/{code}")

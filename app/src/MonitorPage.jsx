@@ -24,6 +24,24 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 const db = getDatabase(app);
 const API = 'http://192.168.1.9:8081/api';
 
+function applyMonacoChanges(content, changes) {
+    if (!Array.isArray(changes) || changes.length === 0) {
+        return content;
+    }
+
+    const orderedChanges = [...changes].sort((left, right) => {
+        const leftOffset = typeof left.rangeOffset === 'number' ? left.rangeOffset : 0;
+        const rightOffset = typeof right.rangeOffset === 'number' ? right.rangeOffset : 0;
+        return rightOffset - leftOffset;
+    });
+
+    return orderedChanges.reduce((nextContent, change) => {
+        const offset = typeof change.rangeOffset === 'number' ? change.rangeOffset : 0;
+        const length = typeof change.rangeLength === 'number' ? change.rangeLength : 0;
+        return `${nextContent.slice(0, offset)}${change.text || ''}${nextContent.slice(offset + length)}`;
+    }, content);
+}
+
 export default function MonitorPage() {
     const { sessionCode } = useParams();
     const navigate = useNavigate();
@@ -34,8 +52,8 @@ export default function MonitorPage() {
     const headers = { Authorization: `Bearer ${token}` };
     const [liveCode, setLiveCode] = useState(null);
     const [candidateCode, setCandidateCode] = useState('');
+    const candidateCodeRef = React.useRef('');
     const codeVersionRef = React.useRef(0);
-    const editorRef = React.useRef(null);
     const webRtcSignalRef = React.useRef(null);
 
     const { status: realtimeStatus, presence, send: sendRealtime } = useRealtimeSession({
@@ -54,9 +72,9 @@ export default function MonitorPage() {
             if (message.type === MESSAGE_TYPES.CODE_SNAPSHOT) {
                 const content = message.payload?.content || '';
                 const version = Number(message.payload?.version || 0);
+                candidateCodeRef.current = content;
                 setCandidateCode(content);
                 codeVersionRef.current = version;
-                editorRef.current?.setValue(content);
             }
 
             if (message.type === MESSAGE_TYPES.CODE_DELTA) {
@@ -72,15 +90,9 @@ export default function MonitorPage() {
                     return;
                 }
 
-                if (editorRef.current && changes.length > 0) {
-                    editorRef.current.executeEdits('remote-code-sync', changes.map(change => ({
-                        range: change.range,
-                        text: change.text,
-                        forceMoveMarkers: true,
-                    })));
-                    setCandidateCode(editorRef.current.getValue());
-                }
-
+                const nextContent = applyMonacoChanges(candidateCodeRef.current, changes);
+                candidateCodeRef.current = nextContent;
+                setCandidateCode(nextContent);
                 codeVersionRef.current = version;
             }
 
@@ -136,7 +148,11 @@ export default function MonitorPage() {
         const codeRef = ref(db, `documents/${sessionCode}`);
         const unsub = onValue(codeRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) setCandidateCode(data.content || '');
+            if (data) {
+                const content = data.content || '';
+                candidateCodeRef.current = content;
+                setCandidateCode(content);
+            }
         });
         return () => unsub();
     }, [liveCode, sessionCode, realtimeStatus]);
@@ -165,6 +181,11 @@ export default function MonitorPage() {
         if (score >= 30) return 'MEDIUM RISK';
         return 'LOW RISK';
     };
+
+    const candidateConnected = Boolean(presence?.candidateConnected);
+    const activeCandidateId = candidateConnected ? String(presence?.candidateId || '') : '';
+    const activeCandidateStats = activeCandidateId ? alerts[activeCandidateId] : null;
+    const historicalAlertEntries = Object.entries(alerts).filter(([candidateId]) => candidateId !== activeCandidateId);
 
     if (!token) { navigate('/login'); return null; }
 
@@ -202,13 +223,53 @@ export default function MonitorPage() {
                         <VideoCallPanel {...call} />
                     </div>
 
-                    {Object.keys(alerts).length === 0 ? (
-                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center text-gray-500">
-                            Waiting for candidates to join...
+                    <div className={`mb-6 rounded-2xl border p-4 text-sm ${candidateConnected ? 'border-green-600/30 bg-green-600/10 text-green-300' : 'border-gray-800 bg-gray-900 text-gray-400'}`}>
+                        {candidateConnected
+                            ? 'Candidate connected. Live monitoring is active.'
+                            : 'Waiting for candidates to join...'}
+                    </div>
+
+                    {candidateConnected && (
+                        <div className={`mb-6 bg-gray-900 border rounded-2xl p-6 ${activeCandidateStats?.tabSwitches > 3 ? 'border-red-600/50' : 'border-green-600/30'}`}>
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <div className="font-semibold">Candidate #{activeCandidateId}</div>
+                                    <div className="text-gray-500 text-xs mt-1">
+                                        Last activity: {activeCandidateStats?.lastAlert ? new Date(activeCandidateStats.lastAlert).toLocaleTimeString() : 'Live now'}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className={`text-2xl font-bold ${activeCandidateStats?.tabSwitches > 3 ? 'text-red-400' : 'text-yellow-400'}`}>
+                                        {activeCandidateStats?.tabSwitches || 0}
+                                    </div>
+                                    <div className="text-gray-500 text-xs">tab switches</div>
+                                </div>
+                            </div>
+
+                            {activeCandidateStats?.tabSwitches > 3 && (
+                                <div className="mb-4 px-3 py-2 bg-red-600/20 border border-red-600/30 rounded-lg text-red-400 text-sm">
+                                    ⚠️ Suspicious activity detected
+                                </div>
+                            )}
+
+                            <button
+                                onClick={() => loadReport(activeCandidateId)}
+                                className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                View Full Report
+                            </button>
+                            <button
+                                onClick={() => setLiveCode(activeCandidateId)}
+                                className="w-full py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors mt-2"
+                            >
+                                View Live Code
+                            </button>
                         </div>
-                    ) : (
+                    )}
+
+                    {historicalAlertEntries.length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {Object.entries(alerts).map(([candidateId, data]) => (
+                            {historicalAlertEntries.map(([candidateId, data]) => (
                                 <div
                                     key={candidateId}
                                     className={`bg-gray-900 border rounded-2xl p-6 ${data.tabSwitches > 3 ? 'border-red-600/50' : 'border-gray-800'}`}
@@ -269,9 +330,6 @@ export default function MonitorPage() {
                                 language="javascript"
                                 value={candidateCode}
                                 theme="vs-dark"
-                                onMount={(editor) => {
-                                    editorRef.current = editor;
-                                }}
                                 options={{
                                     readOnly: true,
                                     fontSize: 13,
