@@ -84,7 +84,15 @@ public class SessionService {
             ActivityLog latestCandidateLog = activityLogRepository
                 .findTopBySessionCodeAndCandidateIdIsNotNullOrderByCreatedAtDesc(session.getSessionCode())
                 .orElse(null);
-            item.put("candidateId", latestCandidateLog != null ? latestCandidateLog.getCandidateId() : null);
+            if (latestCandidateLog != null) {
+                Long candidateId = latestCandidateLog.getCandidateId();
+                item.put("candidateId", candidateId);
+                userRepository.findById(candidateId).ifPresent(candidateUser -> {
+                    item.put("candidateName", candidateUser.getName());
+                });
+            } else {
+                item.put("candidateId", null);
+            }
 
             response.add(item);
         }
@@ -107,6 +115,17 @@ public class SessionService {
         response.put("problemStatement", session.getProblemStatement());
         response.put("status", session.getStatus());
         response.put("createdBy", session.getCreatedBy());
+
+        ActivityLog latestCandidateLog = activityLogRepository
+            .findTopBySessionCodeAndCandidateIdIsNotNullOrderByCreatedAtDesc(code)
+            .orElse(null);
+        if (latestCandidateLog != null) {
+            Long candidateId = latestCandidateLog.getCandidateId();
+            response.put("candidateId", candidateId);
+            userRepository.findById(candidateId).ifPresent(candidateUser -> {
+                response.put("candidateName", candidateUser.getName());
+            });
+        }
         return response;
     }
 

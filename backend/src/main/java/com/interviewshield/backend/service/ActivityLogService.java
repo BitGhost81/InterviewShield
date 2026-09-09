@@ -3,6 +3,7 @@ package com.interviewshield.backend.service;
 import com.interviewshield.backend.dto.CreateLogRequest;
 import com.interviewshield.backend.model.ActivityLog;
 import com.interviewshield.backend.repository.ActivityLogRepository;
+import com.interviewshield.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +16,9 @@ public class ActivityLogService {
 
     @Autowired
     private ActivityLogRepository activityLogRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     public Map<String, Object> saveLog(CreateLogRequest request) {
         ActivityLog log = new ActivityLog();
@@ -60,6 +64,9 @@ public class ActivityLogService {
         Map<String, Object> report = new HashMap<>();
         report.put("sessionCode", sessionCode);
         report.put("candidateId", candidateId);
+        userRepository.findById(candidateId).ifPresent(user -> {
+            report.put("candidateName", user.getName());
+        });
         report.put("totalEvents", logs.size());
         report.put("tabSwitches", tabSwitches);
         report.put("snapshots", snapshots);

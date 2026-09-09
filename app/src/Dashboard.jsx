@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
-const API = 'http://192.168.1.9:8081/api';
+const API = '/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -55,88 +55,163 @@ export default function Dashboard() {
     navigate('/login');
   };
 
+  const initials = (userName || 'IN')
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white">
+    <div className="min-h-screen text-white pb-16 relative">
+      {/* Top Navbar */}
+      <header className="max-w-5xl mx-auto px-4 pt-6">
+        <nav className="glass rounded-[24px] px-6 py-3.5 flex items-center justify-between shadow-xl">
+          <Link to="/" className="inline-flex items-center gap-3 group">
+            <span className="grid place-items-center w-8 h-8 rounded-xl bg-gradient-to-br from-mint via-cyan to-violet shadow-[0_0_14px_rgba(76,229,232,0.35)] transition-transform group-hover:scale-105">
+              <svg className="w-4 h-4" viewBox="0 0 20 22" fill="none">
+                <path d="M10 1 18.5 4.7v5.7c0 4.7-3.6 8.6-8.5 10C5.1 19 1.5 15.1 1.5 10.4V4.7L10 1Z" stroke="#071014" strokeWidth="1.5" />
+                <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="font-display font-bold text-lg tracking-tight">InterviewShield</span>
+          </Link>
 
-      {/* Navbar */}
-      <nav className="bg-gray-900 border-b border-gray-800 px-8 py-4 flex items-center justify-between">
-        <div className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-          InterviewShield
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-gray-400 text-sm">👋 {userName}</span>
-          <span className="px-3 py-1 bg-blue-600/20 text-blue-400 rounded-full text-xs font-medium">INTERVIEWER</span>
-          <button onClick={logout} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors">
-            Logout
-          </button>
-        </div>
-      </nav>
+          <div className="flex items-center gap-3.5">
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-white/60 text-xs">Logged in as</span>
+              <span className="text-white font-medium text-xs">{userName || 'Interviewer'}</span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet to-cyan grid place-items-center font-display font-bold text-xs text-white shadow-md">
+              {initials}
+            </div>
+            <button
+              onClick={logout}
+              className="button-ghost px-3.5 py-1.5 text-xs text-white/70 hover:text-white"
+            >
+              Logout
+            </button>
+          </div>
+        </nav>
+      </header>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
-
-        {/* Create Session */}
-        <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 mb-10">
-          <h2 className="text-2xl font-bold mb-6">Create Interview Session</h2>
+      <main className="max-w-5xl mx-auto px-4 pt-8">
+        {/* Create Session Card */}
+        <section className="glass rounded-[28px] p-6 sm:p-8 mb-10 shadow-2xl">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-1">New Assessment</div>
+              <h2 className="font-display font-bold text-2xl tracking-tight text-white">Create Interview Session</h2>
+            </div>
+          </div>
 
           <div className="space-y-4">
-            <input
-              type="text"
-              placeholder="Session title (e.g. Java Backend Interview)"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <textarea
-              placeholder="Problem statement (e.g. Write a function to reverse a linked list...)"
-              value={problem}
-              onChange={e => setProblem(e.target.value)}
-              rows={4}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
+            <div>
+              <label className="block text-xs font-medium text-white/70 mb-1.5">
+                Session Title
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Senior Frontend Engineer — Technical Screen"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white/5 border border-white/15 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-mint focus:ring-1 focus:ring-mint transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-white/70 mb-1.5">
+                Problem Statement
+              </label>
+              <textarea
+                placeholder="Describe the coding challenge, requirements, constraints, and test scenarios..."
+                value={problem}
+                onChange={e => setProblem(e.target.value)}
+                rows={4}
+                className="w-full px-4 py-2.5 bg-white/5 border border-white/15 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-mint focus:ring-1 focus:ring-mint resize-none transition-all"
+              />
+            </div>
+
             <button
               onClick={createSession}
               disabled={loading}
-              className="w-full py-3 bg-white text-black rounded-xl font-semibold hover:bg-gray-100 transition-all disabled:opacity-50"
+              className="button-primary w-full sm:w-auto px-8 py-3 text-sm font-semibold tracking-wide disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create Session'}
+              {loading ? 'Creating Session...' : 'Create Session ↗'}
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* My Sessions */}
-        <div>
-          <h2 className="text-2xl font-bold mb-6">My Sessions</h2>
+        {/* My Sessions List */}
+        <section>
+          <div className="flex items-baseline justify-between mb-5 px-1">
+            <h2 className="font-display font-bold text-2xl tracking-tight text-white">My Sessions</h2>
+            <span className="text-white/50 text-xs font-medium">
+              {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} total
+            </span>
+          </div>
+
           {historyLoading ? (
-            <div className="text-gray-500 py-10">Loading sessions...</div>
+            <div className="glass rounded-2xl p-12 text-center text-white/40 text-sm">
+              Loading your interview sessions...
+            </div>
           ) : sessions.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               {sessions.map(session => (
-                <div key={session.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <div className="font-semibold text-lg">{session.title}</div>
-                    <div className="text-gray-400 text-sm">Code: <span className="font-mono text-blue-400">{session.sessionCode}</span></div>
-                    <div className="text-gray-400 text-sm">Status: {session.status}</div>
-                    <div className="text-gray-400 text-sm">Candidate: {session.candidateId ?? 'Not joined yet'}</div>
-                    <div className="text-gray-500 text-xs">
-                      Created: {session.createdAt ? new Date(session.createdAt).toLocaleString() : 'N/A'}
+                <div
+                  key={session.id}
+                  className="glass rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:border-white/35 hover:-translate-y-0.5"
+                >
+                  <div className="space-y-2">
+                    <div className="font-display font-semibold text-lg text-white">
+                      {session.title}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 font-mono text-cyan">
+                        <span>Code:</span>
+                        <strong className="font-bold tracking-wider">{session.sessionCode}</strong>
+                      </span>
+
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mint/10 border border-mint/20 text-mint font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-mint" />
+                        {session.status || 'Active'}
+                      </span>
+
+                      <span className="text-white/50">
+                        Candidate: {session.candidateName || (session.candidateId ? `#${session.candidateId}` : 'Awaiting join')}
+                      </span>
+                    </div>
+
+                    <div className="text-white/40 text-[11px]">
+                      Created: {session.createdAt ? new Date(session.createdAt).toLocaleString() : 'Recent'}
                     </div>
                   </div>
+
                   <button
                     onClick={() => navigate(`/monitor/${session.sessionCode}`)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+                    className="button-primary px-5 py-2 text-xs font-semibold self-start sm:self-center"
                   >
-                    Open
+                    Open Monitor ↗
                   </button>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center text-gray-500 py-20">
-              No sessions yet. Create one above.
+            <div className="glass rounded-[24px] p-16 text-center border border-white/10">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 grid place-items-center mx-auto mb-3 text-white/40">
+                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+              </div>
+              <p className="text-white/60 text-sm font-medium mb-1">No sessions created yet</p>
+              <p className="text-white/40 text-xs">Create your first interview session above to get started.</p>
             </div>
           )}
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }

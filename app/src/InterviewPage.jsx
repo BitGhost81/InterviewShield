@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { initializeApp, getApps } from 'firebase/app';
 import { getDatabase, ref, onValue, set, update, increment } from 'firebase/database';
@@ -23,7 +23,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getDatabase(app);
 
-const API = 'http://192.168.1.9:8081/api';
+const API = '/api';
 
 export default function InterviewPage() {
     const { sessionCode } = useParams();
@@ -288,80 +288,126 @@ export default function InterviewPage() {
         });
     };
     return (
-        <div className="h-screen flex flex-col bg-gray-950 text-white">
+        <div className="h-screen flex flex-col text-white overflow-hidden relative">
+            {/* Top Bar */}
+            <header className="px-5 py-3 border-b border-white/10 glass-subtle flex-shrink-0 z-20">
+                <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-6">
+                        <Link to="/" className="inline-flex items-center gap-2.5 group">
+                            <span className="grid place-items-center w-7 h-7 rounded-lg bg-gradient-to-br from-mint via-cyan to-violet shadow-[0_0_12px_rgba(76,229,232,0.35)]">
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 20 22" fill="none">
+                                    <path d="M10 1 18.5 4.7v5.7c0 4.7-3.6 8.6-8.5 10C5.1 19 1.5 15.1 1.5 10.4V4.7L10 1Z" stroke="#071014" strokeWidth="1.5" />
+                                    <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </span>
+                            <span className="font-display font-bold text-base tracking-tight hidden sm:inline">InterviewShield</span>
+                        </Link>
 
-            {/* Navbar */}
-            <nav className="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between">
-                <div className="text-lg font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                    InterviewShield
-                </div>
-                <div className="flex items-center gap-6">
-                    <div className="text-sm text-gray-400">
-                        Session: <span className="text-blue-400 font-mono font-bold">{sessionCode}</span>
-                    </div>
-                    <ConnectionStatus realtimeStatus={realtimeStatus} presence={presence} />
-                    {tabSwitches > 0 && (
-                        <div className="px-3 py-1 bg-red-600/20 text-red-400 rounded-full text-xs font-medium">
-                            ⚠️ {tabSwitches} tab switch{tabSwitches > 1 ? 'es' : ''} detected
+                        <div className="flex items-center gap-3 text-xs">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-white/70">
+                                <span className="text-white/40">Session:</span>
+                                <span className="font-mono text-cyan font-bold tracking-wider">{sessionCode}</span>
+                            </span>
+
+                            <ConnectionStatus realtimeStatus={realtimeStatus} presence={presence} />
+
+                            {tabSwitches > 0 && (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber/15 border border-amber/30 text-amber text-[11px] font-semibold animate-pulse">
+                                    ⚠️ {tabSwitches} tab switch{tabSwitches > 1 ? 'es' : ''}
+                                </span>
+                            )}
                         </div>
-                    )}
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                        <button
+                            onClick={runCode}
+                            className="button-ghost px-3.5 py-1.5 text-xs font-semibold"
+                        >
+                            ▶ Run Code
+                        </button>
+                        <button
+                            onClick={submitCode}
+                            className="button-primary px-4 py-1.5 text-xs font-semibold"
+                        >
+                            Submit Code ↗
+                        </button>
+                    </div>
                 </div>
-                <button
-                    onClick={runCode}
-                    className="px-6 py-2 bg-green-700 hover:bg-green-800 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                    ▶ Run Code
-                </button>
-                <button
-                    onClick={submitCode}
-                    className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                    Submit Code
-                </button>
-            </nav>
+            </header>
 
-            <div className="flex flex-1 overflow-hidden">
+            {/* Workspace */}
+            <div className="flex flex-1 overflow-hidden p-3 gap-3 min-h-0">
+                {/* Left Column: Problem & Video */}
+                <div className="w-80 flex flex-col gap-3 overflow-y-auto flex-shrink-0">
+                    <div className="glass rounded-2xl p-5 shadow-lg flex-shrink-0">
+                        <div className="text-mint text-[10px] font-bold uppercase tracking-widest mb-1.5">Problem Statement</div>
+                        <h2 className="font-display font-bold text-lg text-white mb-2.5 leading-snug">
+                            {session?.title || 'Loading problem...'}
+                        </h2>
+                        <p className="text-white/75 text-xs leading-relaxed whitespace-pre-wrap">
+                            {session?.problemStatement || 'Please wait while the problem details load.'}
+                        </p>
+                    </div>
 
-                {/* Problem Statement */}
-                <div className="w-80 bg-gray-900 border-r border-gray-800 p-6 overflow-auto">
-                    <h3 className="font-semibold text-gray-300 mb-2 text-sm uppercase tracking-wide">Problem</h3>
-                    <h2 className="text-lg font-bold mb-4">{session?.title}</h2>
-                    <p className="text-gray-400 text-sm leading-relaxed">{session?.problemStatement}</p>
-
-                    <div className="mt-8">
+                    <div className="flex-shrink-0">
                         <VideoCallPanel {...call} />
                     </div>
                 </div>
 
-                {/* Monaco Editor */}
-                <div className="flex-1">
-                    <Editor
-                        height="100%"
-                        defaultLanguage="javascript"
-                        defaultValue="// Write your solution here\n\n"
-                        theme="vs-dark"
-                        onMount={handleEditorMount}
-                        options={{
-                            fontSize: 14,
-                            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                            minimap: { enabled: false },
-                            lineNumbers: 'on',
-                            automaticLayout: true,
-                        }}
-                    />
+                {/* Right Column: Monaco Editor & Console */}
+                <div className="flex-1 flex flex-col min-h-0 glass rounded-2xl overflow-hidden border border-white/15 shadow-2xl">
+                    {/* Editor Tab Header */}
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 bg-white/5 flex-shrink-0">
+                        <div className="inline-flex items-center gap-2 text-xs text-white/80 font-mono">
+                            <span className="w-2 h-2 rounded-[2px] bg-violet" />
+                            <span>solution.js</span>
+                        </div>
+                        <div className="inline-flex items-center gap-1.5 text-[11px] text-mint">
+                            <span className="w-1.5 h-1.5 rounded-full bg-mint shadow-[0_0_6px_#4ce5e8]" />
+                            <span>Live sync</span>
+                        </div>
+                    </div>
+
+                    {/* Monaco Editor Container */}
+                    <div className="flex-1 min-h-0 bg-[#020610]/70">
+                        <Editor
+                            height="100%"
+                            defaultLanguage="javascript"
+                            defaultValue="// Write your solution here\n\n"
+                            theme="vs-dark"
+                            onMount={handleEditorMount}
+                            options={{
+                                fontSize: 13,
+                                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                                minimap: { enabled: false },
+                                lineNumbers: 'on',
+                                automaticLayout: true,
+                                smoothScrolling: true,
+                                cursorBlinking: 'smooth',
+                            }}
+                        />
+                    </div>
+
+                    {/* Console Output Drawer */}
+                    {showConsole && (
+                        <div className="h-44 bg-[#01091a]/95 border-t border-white/15 p-3.5 font-mono text-xs flex flex-col flex-shrink-0">
+                            <div className="flex items-center justify-between mb-2 flex-shrink-0 pb-1.5 border-b border-white/10">
+                                <span className="text-white/60 font-semibold uppercase tracking-wider text-[10px]">Console Output</span>
+                                <button
+                                    onClick={() => setShowConsole(false)}
+                                    className="text-white/40 hover:text-white text-xs px-2 py-0.5 rounded hover:bg-white/5 transition-colors"
+                                >
+                                    ✕ Close
+                                </button>
+                            </div>
+                            <pre className="text-mint overflow-auto flex-1 whitespace-pre-wrap leading-relaxed">
+                                {output || '// No output yet'}
+                            </pre>
+                        </div>
+                    )}
                 </div>
             </div>
-            {showConsole && (
-                <div className="h-40 bg-black border-t border-gray-700 p-4 font-mono text-sm overflow-auto">
-                    <div className="flex justify-between mb-2">
-                        <span className="text-gray-300 font-semibold">Console Output</span>
-                        <button onClick={() => setShowConsole(false)} className="text-red-400 hover:text-red-300 text-xs">
-                            Close
-                        </button>
-                    </div>
-                    <pre className="text-green-400">{output || '// No output yet'}</pre>
-                </div>
-            )}
         </div>
     );
 }
