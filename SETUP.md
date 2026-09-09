@@ -1,14 +1,7 @@
-git clone https://github.com/BitGhost81/InterviewShield.git
+# InterviewShield — Team Setup
 
-:: Create MySQL database first
-	CREATE DATABASE interviewshield;
+## 1. Clone the Repository
 
-:: Configure database
-	setx DB_URL "jdbc:mysql://localhost:3306/interviewshield"
-	setx DB_USER "root"
-	setx DB_PASSWORD "YOUR_MYSQL_PASSWORD"
-
-:: Frontend
-	cd app
-	npm install
-	npm run dev
+```bash
+git clone <REPO_URL>
+cd InterviewSheild
