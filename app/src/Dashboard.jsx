@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
-const API = '/api';
+const API = import.meta.env.VITE_API_URL || '/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -11,11 +11,32 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [deletingCode, setDeletingCode] = useState(null);
   const userId = localStorage.getItem('userId');
   const userName = localStorage.getItem('userName');
   const token = localStorage.getItem('token');
 
   const headers = { Authorization: `Bearer ${token}` };
+
+  const deleteSession = async (sessionCode) => {
+    if (!window.confirm(`Are you sure you want to delete session ${sessionCode}? All associated activity logs will be permanently removed.`)) {
+      return;
+    }
+
+    setActionError('');
+    setDeletingCode(sessionCode);
+    try {
+      await axios.delete(`${API}/sessions/${sessionCode}`, { headers });
+      setSessions((prev) => prev.filter((s) => s.sessionCode !== sessionCode));
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to delete session';
+      setActionError(msg);
+      setTimeout(() => setActionError(''), 5000);
+    } finally {
+      setDeletingCode(null);
+    }
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -151,6 +172,18 @@ export default function Dashboard() {
             </span>
           </div>
 
+          {actionError && (
+            <div className="mb-4 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-xs flex items-center justify-between animate-[fadeIn_0.3s_ease-out]">
+              <span>⚠️ {actionError}</span>
+              <button
+                onClick={() => setActionError('')}
+                className="text-red-400/60 hover:text-red-300 ml-3 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {historyLoading ? (
             <div className="glass rounded-2xl p-12 text-center text-white/40 text-sm">
               Loading your interview sessions...
@@ -188,12 +221,22 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => navigate(`/monitor/${session.sessionCode}`)}
-                    className="button-primary px-5 py-2 text-xs font-semibold self-start sm:self-center"
-                  >
-                    Open Monitor ↗
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-center">
+                    <button
+                      onClick={() => navigate(`/monitor/${session.sessionCode}`)}
+                      className="button-primary px-4 py-2 text-xs font-semibold"
+                    >
+                      Open Monitor ↗
+                    </button>
+                    <button
+                      onClick={() => deleteSession(session.sessionCode)}
+                      disabled={deletingCode === session.sessionCode}
+                      className="px-3 py-2 text-xs font-semibold rounded-xl text-red-400/80 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 transition-all disabled:opacity-50"
+                      title="Delete this session"
+                    >
+                      {deletingCode === session.sessionCode ? 'Deleting...' : 'Delete ✕'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

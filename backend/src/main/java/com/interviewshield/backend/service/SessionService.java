@@ -9,6 +9,7 @@ import com.interviewshield.backend.repository.SessionRepository;
 import com.interviewshield.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -141,6 +142,39 @@ public class SessionService {
         session.setStatus("ENDED");
         sessionRepository.save(session);
         response.put("message", "Session ended");
+        response.put("sessionCode", code);
+        return response;
+    }
+
+    @Transactional
+    public Map<String, Object> deleteSession(String code, String email) {
+        Map<String, Object> response = new HashMap<>();
+
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            response.put("error", "Unauthorized");
+            return response;
+        }
+
+        InterviewSession session = sessionRepository.findBySessionCode(code).orElse(null);
+        if (session == null) {
+            response.put("error", "Session not found");
+            return response;
+        }
+
+        // Only the authenticated interviewer who created the session may delete it
+        if (session.getCreatedBy() == null || !session.getCreatedBy().equals(user.getId())) {
+            response.put("error", "Forbidden");
+            return response;
+        }
+
+        // Safely delete dependent activity logs first
+        activityLogRepository.deleteBySessionCode(code);
+
+        // Delete the session entity
+        sessionRepository.delete(session);
+
+        response.put("message", "Session deleted successfully");
         response.put("sessionCode", code);
         return response;
     }

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#070a13">
+<title>InterviewShield — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #011130;
+    --glass: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.055));
+    --line: rgba(255,255,255,.34);
+    --line-soft: rgba(255,255,255,.14);
+    --white: #ffffff;
+    --muted: rgba(255,255,255,.84);
+    --faint: rgba(255,255,255,.62);
+    --mint: #4ce5e8;
+    --cyan: #1994ff;
+    --violet: #8e78ff;
+    --amber: #fdbb5e;
+    --ease-out: cubic-bezier(.23, 1, .32, 1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--white);
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, #1994ff, transparent 60%),
+      radial-gradient(ellipse 60% 60% at 100% 30%, #4ce5e8, transparent 60%),
+      radial-gradient(ellipse 70% 70% at 0% 80%, #033572, transparent 70%),
+      var(--ink);
+    font-family: 'DM Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column;
+  }
+  body::after { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none; background: radial-gradient(circle at 50% 50%, transparent 0, rgba(0,15,50,.42) 100%); }
+  a { color: inherit; text-decoration: none; }
+  .display { font-family: 'Space Grotesk', sans-serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  .glass { background: var(--glass); border: 1px solid var(--line); box-shadow: inset 0 2px 4px rgba(255,255,255,.6), inset 0 -2px 10px rgba(255,255,255,.1), 0 24px 50px rgba(0,0,0,.3); -webkit-backdrop-filter: blur(24px) saturate(145%); backdrop-filter: blur(24px) saturate(145%); }
+
+  nav.top { display:flex; align-items:center; justify-content:space-between; padding: 26px 44px; }
+  .brand { display:inline-flex; align-items:center; gap:12px; font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.03em; }
+  .brand-mark { display:grid; place-items:center; width:38px; height:38px; border-radius:12px; background: linear-gradient(135deg, var(--mint), var(--cyan) 48%, var(--violet)); box-shadow: 0 0 22px rgba(76,229,232,.4); }
+  .brand-mark svg { width:19px; height:19px; }
+
+  main { flex:1; display:flex; align-items:center; justify-content:center; padding: 20px 20px 60px; }
+  .auth-card { width: 100%; max-width: 400px; padding: 40px 36px; border-radius: 28px; }
+  .auth-title { font-size: 27px; font-weight: 700; letter-spacing: -.03em; margin-bottom: 6px; text-align:center; }
+  .auth-sub { color: var(--faint); font-size: 13px; text-align:center; margin-bottom: 26px; }
+
+  .role-toggle { display:flex; gap:6px; padding:4px; margin-bottom:22px; border-radius:14px; background: rgba(255,255,255,.05); border:1px solid var(--line-soft); }
+  .role-toggle button { flex:1; padding:9px 0; border:none; border-radius:10px; background:transparent; color:var(--faint); font:600 12.5px 'DM Sans',sans-serif; cursor:pointer; transition:all .18s ease; }
+  .role-toggle button.active { color:#071014; background: linear-gradient(135deg, var(--mint), var(--cyan)); }
+
+  .field { margin-bottom: 14px; }
+  .field label { display:block; margin-bottom:6px; color:var(--faint); font-size:11.5px; font-weight:500; }
+  .field input {
+    width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line-soft);
+    background: rgba(255,255,255,.045); color: var(--white); font: 13.5px 'DM Sans',sans-serif;
+    outline:none; transition: border-color .16s ease, background .16s ease;
+  }
+  .field input::placeholder { color: rgba(255,255,255,.35); }
+  .field input:focus { border-color: var(--mint); background: rgba(255,255,255,.07); }
+
+  .button-primary {
+    width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+    padding: 13px 0; margin-top: 8px; border:1px solid rgba(255,255,255,.38); border-radius:999px;
+    color:var(--white); background: linear-gradient(135deg, rgba(255,255,255,.34), rgba(255,255,255,.07));
+    box-shadow: inset 0 2px 4px rgba(255,255,255,.6), 0 8px 20px rgba(0,0,0,.2);
+    font: 600 13.5px 'DM Sans',sans-serif; cursor:pointer; transition: transform .16s var(--ease-out);
+  }
+  .button-primary:hover { transform: translateY(-2px); }
+
+  .divider { display:flex; align-items:center; gap:12px; margin: 20px 0; color: var(--faint); font-size:11px; }
+  .divider::before, .divider::after { content:''; flex:1; height:1px; background: var(--line-soft); }
+
+  .switch-line { text-align:center; margin-top: 18px; color: var(--faint); font-size: 12.5px; }
+  .switch-line a { color: var(--mint); font-weight: 600; }
+
+  footer { text-align:center; padding: 20px; color: var(--faint); font-size: 11px; }
+
+  @media (pointer: coarse) { .cursor-light { display: none; } }
+  .cursor-light { position: fixed; z-index: 1; top: 0; left: 0; width: 360px; height: 360px; pointer-events: none; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle, rgba(130,246,211,.07), transparent 67%); mix-blend-mode: screen; opacity: 0; transition: opacity .3s ease; }
+</style>
+</head>
+<body>
+  <div class="cursor-light" id="cursorLight" aria-hidden="true"></div>
+
+  <nav class="top">
+    <a class="brand" href="landing-team-final.html">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 20 22" fill="none"><path d="M10 1 18.5 4.7v5.7c0 4.7-3.6 8.6-8.5 10C5.1 19 1.5 15.1 1.5 10.4V4.7L10 1Z" stroke="currentColor" stroke-width="1.5"/><path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>InterviewShield</span>
+    </a>
+  </nav>
+
+  <main>
+    <div class="auth-card glass">
+      <div class="auth-title display" id="titleText">Welcome back</div>
+      <div class="auth-sub" id="subText">Sign in to continue to your sessions</div>
+
+      <div class="role-toggle">
+        <button class="active" id="btnInterviewer">Interviewer</button>
+        <button id="btnCandidate">Candidate</button>
+      </div>
+
+      <form onsubmit="return false;">
+        <div class="field">
+          <label>Email address</label>
+          <input type="email" placeholder="you@company.com" required>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" placeholder="••••••••" required>
+        </div>
+        <button class="button-primary" type="submit">Sign in <span aria-hidden="true">↗</span></button>
+      </form>
+
+      <div class="divider">or</div>
+
+      <div class="switch-line" id="switchLine">New here? <a href="#">Create an account</a></div>
+    </div>
+  </main>
+
+  <footer>InterviewShield — sign in securely</footer>
+
+  <script>
+    (() => {
+      const light = document.getElementById('cursorLight');
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const coarse = window.matchMedia('(pointer: coarse)').matches;
+      if (light && !coarse && !reduced) {
+        window.addEventListener('pointermove', (e) => {
+          light.style.left = e.clientX + 'px';
+          light.style.top = e.clientY + 'px';
+          light.style.opacity = '1';
+        }, { passive: true });
+        window.addEventListener('pointerleave', () => { light.style.opacity = '0'; });
+      }
+    })();
+
+    const btnI = document.getElementById('btnInterviewer');
+    const btnC = document.getElementById('btnCandidate');
+    const title = document.getElementById('titleText');
+    const sub = document.getElementById('subText');
+    btnI.addEventListener('click', () => {
+      btnI.classList.add('active'); btnC.classList.remove('active');
+      title.textContent = 'Welcome back';
+      sub.textContent = 'Sign in to continue to your sessions';
+    });
+    btnC.addEventListener('click', () => {
+      btnC.classList.add('active'); btnI.classList.remove('active');
+      title.textContent = 'Join a session';
+      sub.textContent = 'Sign in, then enter your session code';
+    });
+  </script>
+
+</body>
+</html>
