@@ -45,4 +45,23 @@ public class SessionController {
         }
         return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping("/{code}")
+    public ResponseEntity<Map<String, Object>> deleteSession(@PathVariable String code, Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        Map<String, Object> response = sessionService.deleteSession(code, authentication.getName());
+        if (response.containsKey("error")) {
+            String err = (String) response.get("error");
+            if ("Session not found".equals(err)) {
+                return ResponseEntity.status(404).body(response);
+            }
+            if ("Forbidden".equals(err)) {
+                return ResponseEntity.status(403).body(response);
+            }
+            return ResponseEntity.status(400).body(response);
+        }
+        return ResponseEntity.ok(response);
+    }
 }

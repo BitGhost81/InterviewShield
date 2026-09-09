@@ -22,7 +22,7 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getDatabase(app);
-const API = '/api';
+const API = import.meta.env.VITE_API_URL || '/api';
 
 function applyMonacoChanges(content, changes) {
     if (!Array.isArray(changes) || changes.length === 0) {
@@ -474,6 +474,29 @@ export default function MonitorPage() {
                                 >
                                     🔄 Refresh
                                 </button>
+                            </div>
+                        </div>
+
+                        {/* Session & Activity Details */}
+                        <div className="glass-subtle rounded-2xl p-4 mb-6 border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                            <div>
+                                <span className="text-white/40 block mb-1 uppercase tracking-wider text-[10px] font-semibold">Session Details</span>
+                                <div className="font-display font-semibold text-white text-sm truncate">{report.sessionTitle || `Session ${sessionCode}`}</div>
+                                <div className="text-white/40 font-mono text-[11px] mt-0.5">Code: {sessionCode} · {report.sessionStatus || 'ACTIVE'}</div>
+                            </div>
+                            <div>
+                                <span className="text-white/40 block mb-1 uppercase tracking-wider text-[10px] font-semibold">Candidate</span>
+                                <div className="font-display font-semibold text-mint text-sm">{getCandidateDisplayName(selectedCandidate)}</div>
+                                <div className="text-white/40 text-[11px] mt-0.5">ID: #{selectedCandidate} · Integrity Verified</div>
+                            </div>
+                            <div>
+                                <span className="text-white/40 block mb-1 uppercase tracking-wider text-[10px] font-semibold">Interview Duration</span>
+                                <div className="font-display font-semibold text-white text-sm">
+                                    {typeof report.durationMinutes === 'number' ? `${report.durationMinutes} min active` : 'Active'}
+                                </div>
+                                <div className="text-white/40 text-[11px] mt-0.5">
+                                    {report.firstActivityAt ? `Started: ${new Date(report.firstActivityAt).toLocaleTimeString()}` : (report.sessionCreatedAt ? `Created: ${new Date(report.sessionCreatedAt).toLocaleTimeString()}` : 'Live session')}
+                                </div>
                             </div>
                         </div>
 

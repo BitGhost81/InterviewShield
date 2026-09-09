@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
-const API = '/api';
+const API = import.meta.env.VITE_API_URL || '/api';
 
 export default function Auth() {
   const navigate = useNavigate();

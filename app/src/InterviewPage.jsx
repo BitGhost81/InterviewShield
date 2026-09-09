@@ -23,7 +23,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getDatabase(app);
 
-const API = '/api';
+const API = import.meta.env.VITE_API_URL || '/api';
 
 export default function InterviewPage() {
     const { sessionCode } = useParams();

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#070a13">
+<title>InterviewShield — Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #011130;
+    --glass: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.055));
+    --line: rgba(255,255,255,.34);
+    --line-soft: rgba(255,255,255,.14);
+    --white: #ffffff;
+    --muted: rgba(255,255,255,.84);
+    --faint: rgba(255,255,255,.62);
+    --mint: #4ce5e8;
+    --cyan: #1994ff;
+    --violet: #8e78ff;
+    --amber: #fdbb5e;
+    --ease-out: cubic-bezier(.23, 1, .32, 1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; color: var(--white); overflow: hidden;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, #1994ff, transparent 60%),
+      radial-gradient(ellipse 60% 60% at 100% 30%, #4ce5e8, transparent 60%),
+      radial-gradient(ellipse 70% 70% at 0% 80%, #033572, transparent 70%),
+      var(--ink);
+    font-family: 'DM Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display:flex; flex-direction:column;
+  }
+  body::after { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none; background: radial-gradient(circle at 50% 50%, transparent 0, rgba(0,15,50,.42) 100%); }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; }
+  .display { font-family: 'Space Grotesk', sans-serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  .glass { background: var(--glass); border: 1px solid var(--line); box-shadow: inset 0 2px 4px rgba(255,255,255,.6), inset 0 -2px 10px rgba(255,255,255,.1), 0 24px 50px rgba(0,0,0,.3); -webkit-backdrop-filter: blur(24px) saturate(145%); backdrop-filter: blur(24px) saturate(145%); }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding: 14px 24px; flex-shrink:0; }
+  .brand { display:inline-flex; align-items:center; gap:10px; font-family:'Space Grotesk',sans-serif; font-size:16px; font-weight:700; }
+  .brand-mark { display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background: linear-gradient(135deg, var(--mint), var(--cyan) 48%, var(--violet)); }
+  .brand-mark svg { width:15px; height:15px; }
+  .session-meta { display:flex; align-items:center; gap:14px; }
+  .cand-chip { display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--muted); }
+  .cand-chip .cand-av { width:26px; height:26px; border-radius:50%; background: linear-gradient(135deg, var(--mint), var(--cyan)); display:grid; place-items:center; font:700 10.5px 'Space Grotesk',sans-serif; color:#071014; }
+  .live-badge { display:inline-flex; align-items:center; gap:7px; padding: 6px 13px; border-radius:999px; background: rgba(253,187,94,.12); color: var(--amber); font-size:11.5px; font-weight:600; }
+  .live-dot { width:6px; height:6px; border-radius:50%; background:var(--amber); box-shadow:0 0 10px var(--amber); animation: blink 1.6s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+  .btn-end { padding: 10px 20px; border-radius:999px; border:1px solid rgba(255,255,255,.24); color:var(--white); background: rgba(255,255,255,.055); font: 600 13px 'DM Sans',sans-serif; cursor:pointer; }
+
+  .workspace { flex:1; display:grid; grid-template-columns: 1fr 320px; gap: 14px; padding: 0 24px 20px; min-height: 0; }
+  .editor-col { display:flex; flex-direction:column; gap:12px; min-height:0; }
+  .editor-panel { flex:1; display:flex; flex-direction:column; border-radius:16px; overflow:hidden; min-height:0; }
+  .editor-head { display:flex; align-items:center; justify-content:space-between; padding: 11px 16px; border-bottom:1px solid var(--line-soft); background: rgba(255,255,255,.03); flex-shrink:0; }
+  .file-pill { display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color: var(--muted); }
+  .file-pill span { width:7px; height:7px; border-radius:2px; background: var(--violet); }
+  .readonly-tag { color: var(--faint); font-size:10.5px; display:flex; align-items:center; gap:5px; }
+  .code-body { flex:1; padding: 16px 18px; overflow:auto; background: rgba(2,6,16,.5); }
+  pre.code { margin:0; color:#cfd8f3; font: 12.5px/2 'JetBrains Mono',monospace; white-space:pre; }
+  .code .num { color:#47516b; user-select:none; display:inline-block; width:22px; }
+  .code .kw { color:#b2aaff; } .code .fn { color:#8aeafd; } .code .cm { color:#5f6d8b; }
+  .code .line-active { display:inline-block; width:100%; background: rgba(130,246,211,.055); }
+
+  .side-col { display:flex; flex-direction:column; gap:12px; min-height:0; overflow-y:auto; }
+  .video-panel { border-radius:16px; overflow:hidden; flex-shrink:0; display:grid; grid-template-columns:1fr 1fr; }
+  .video-self, .video-peer { position:relative; aspect-ratio: 4/3.2; background: linear-gradient(135deg, #182238, #0c1220); display:flex; align-items:center; justify-content:center; }
+  .video-self { border-right:1px solid var(--line-soft); }
+  .video-avatar { width:40px; height:40px; border-radius:50%; background: linear-gradient(135deg, var(--violet), var(--mint)); display:grid; place-items:center; font:700 13px 'Space Grotesk',sans-serif; color:#071014; }
+  .video-tag { position:absolute; bottom:7px; left:8px; font-size:9px; color:var(--faint); background:rgba(0,0,0,.4); padding:2px 6px; border-radius:5px; }
+
+  .risk-panel { border-radius:16px; padding: 18px; flex-shrink:0; text-align:center; }
+  .risk-label { color:var(--faint); font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; }
+  .risk-ring { width:80px; height:80px; margin:0 auto 10px; border-radius:50%; display:grid; place-items:center; background: conic-gradient(var(--amber) 0deg 152deg, rgba(255,255,255,.08) 152deg 360deg); }
+  .risk-ring-inner { width:62px; height:62px; border-radius:50%; background:#17213a; display:grid; place-items:center; }
+  .risk-num { font-size:20px; font-weight:700; font-family:'Space Grotesk',sans-serif; }
+  .risk-verdict { color: var(--amber); font-size:12.5px; font-weight:600; }
+
+  .activity-panel { border-radius:16px; padding: 16px 18px; flex:1; min-height:0; display:flex; flex-direction:column; }
+  .activity-label { color:var(--faint); font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; flex-shrink:0; }
+  .activity-list { overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+  .event { display:grid; grid-template-columns: 8px minmax(0,1fr); gap:9px; align-items:start; font-size:11.5px; color:var(--muted); line-height:1.4; }
+  .event::before { content:''; width:7px; height:7px; margin-top:3px; border-radius:50%; background: var(--mint); box-shadow: 0 0 8px rgba(130,246,211,.7); }
+  .event.warn::before { background: var(--amber); box-shadow: 0 0 8px rgba(255,201,119,.65); }
+  .event small { display:block; margin-top:2px; color:var(--faint); font-size:10px; }
+
+  .action-panel { display:flex; gap:10px; flex-shrink:0; }
+  .btn-flag { flex:1; padding: 11px 0; border-radius:12px; border:1px solid rgba(253,187,94,.3); background: rgba(253,187,94,.08); color:var(--amber); font:600 12.5px 'DM Sans',sans-serif; cursor:pointer; }
+  .btn-note { flex:1; padding: 11px 0; border-radius:12px; border:1px solid var(--line-soft); background: rgba(255,255,255,.05); color:var(--white); font:600 12.5px 'DM Sans',sans-serif; cursor:pointer; }
+
+  @media (max-width: 900px) {
+    .workspace { grid-template-columns: 1fr; overflow-y:auto; }
+  }
+
+  @media (pointer: coarse) { .cursor-light { display: none; } }
+  .cursor-light { position: fixed; z-index: 1; top: 0; left: 0; width: 360px; height: 360px; pointer-events: none; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle, rgba(130,246,211,.07), transparent 67%); mix-blend-mode: screen; opacity: 0; transition: opacity .3s ease; }
+</style>
+</head>
+<body>
+  <div class="cursor-light" id="cursorLight" aria-hidden="true"></div>
+
+  <header class="topbar glass">
+    <a class="brand" href="landing-team-final.html">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 20 22" fill="none"><path d="M10 1 18.5 4.7v5.7c0 4.7-3.6 8.6-8.5 10C5.1 19 1.5 15.1 1.5 10.4V4.7L10 1Z" stroke="currentColor" stroke-width="1.5"/><path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>InterviewShield</span>
+    </a>
+    <div class="session-meta">
+      <div class="cand-chip"><span class="cand-av">RV</span>Rohit Verma <span class="mono" style="color:var(--faint);">· 4A8B-12</span></div>
+      <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+      <button class="btn-end">End session</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <div class="editor-col">
+      <div class="editor-panel glass">
+        <div class="editor-head">
+          <span class="file-pill"><span></span>solution.js</span>
+          <span class="readonly-tag">👁 read-only mirror</span>
+        </div>
+        <div class="code-body">
+          <pre class="code"><span class="num">01</span> <span class="kw">function</span> <span class="fn">twoSum</span>(nums, target) {
+<span class="num">02</span>   <span class="kw">const</span> seen = <span class="kw">new</span> Map();
+<span class="num">03</span>   <span class="kw">for</span> (<span class="kw">let</span> i = 0; i &lt; nums.length; i++) {
+<span class="num">04</span>     <span class="cm">// check complement</span>
+<span class="num">05</span>     <span class="kw">const</span> need = target - nums[i];
+<span class="num">06</span>     <span class="line-active">     <span class="kw">if</span> (seen.has(need)) <span class="kw">return</span> [seen.get(need), i];</span>
+<span class="num">07</span>     seen.set(nums[i], i);
+<span class="num">08</span>   }
+<span class="num">09</span> }<span class="mono" style="color:#fff; opacity:.6;">|</span></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col">
+      <div class="video-panel glass">
+        <div class="video-self">
+          <div class="video-avatar">RV</div>
+          <div class="video-tag">You</div>
+        </div>
+        <div class="video-peer">
+          <div class="video-avatar">RV</div>
+          <div class="video-tag">Candidate</div>
+        </div>
+      </div>
+
+      <div class="risk-panel glass">
+        <div class="risk-label">Live risk score</div>
+        <div class="risk-ring"><div class="risk-ring-inner"><span class="risk-num">42</span></div></div>
+        <div class="risk-verdict">Medium risk</div>
+      </div>
+
+      <div class="activity-panel glass">
+        <div class="activity-label">Activity feed</div>
+        <div class="activity-list">
+          <div class="event">Candidate joined session<small>09:41:06</small></div>
+          <div class="event warn">Tab switch detected — 4s<small>09:46:18</small></div>
+          <div class="event">Webcam snapshot captured<small>09:47:02</small></div>
+          <div class="event warn">Tab switch detected — 11s<small>09:52:40</small></div>
+          <div class="event">Code submitted for review<small>09:58:15</small></div>
+        </div>
+      </div>
+
+      <div class="action-panel">
+        <button class="btn-flag">⚑ Flag moment</button>
+        <button class="btn-note">+ Add note</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+    (() => {
+      const light = document.getElementById('cursorLight');
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const coarse = window.matchMedia('(pointer: coarse)').matches;
+      if (light && !coarse && !reduced) {
+        window.addEventListener('pointermove', (e) => {
+          light.style.left = e.clientX + 'px';
+          light.style.top = e.clientY + 'px';
+          light.style.opacity = '1';
+        }, { passive: true });
+        window.addEventListener('pointerleave', () => { light.style.opacity = '0'; });
+      }
+    })();
+  </script>
+</body>
+</html>
