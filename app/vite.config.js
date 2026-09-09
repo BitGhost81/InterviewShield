@@ -10,5 +10,11 @@ export default defineConfig({
       key: fs.readFileSync('./192.168.1.9+2-key.pem'),
       cert: fs.readFileSync('./192.168.1.9+2.pem'),
     },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+      },
+    },
   },
 })
