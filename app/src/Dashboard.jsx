@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { probeRealtimeJoin } from './realtime/realtimeClient';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
-  const [problem, setProblem] = useState('');
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [deletingCode, setDeletingCode] = useState(null);
   const userId = localStorage.getItem('userId');
   const userName = localStorage.getItem('userName');
+  const userRole = localStorage.getItem('userRole');
   const token = localStorage.getItem('token');
 
   const headers = { Authorization: `Bearer ${token}` };
@@ -39,33 +40,39 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || userRole !== 'INTERVIEWER') return;
 
     setHistoryLoading(true);
     axios.get(`${API}/sessions/mine`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => setSessions(res.data || []))
       .catch(() => alert('Failed to load your sessions'))
       .finally(() => setHistoryLoading(false));
-  }, [token]);
+  }, [token, userRole]);
 
   if (!token) { navigate('/login'); return null; }
 
   const createSession = async () => {
-    if (!title || !problem) return alert('Fill in both fields');
+    if (loading) return;
+    if (userRole !== 'INTERVIEWER') {
+      alert('Only interviewers can create sessions');
+      return;
+    }
+    const cleanTitle = title.trim();
+    if (!cleanTitle) return alert('Session title is required');
+    if (cleanTitle.length > 150) return alert('Session title must be 150 characters or fewer');
     setLoading(true);
     try {
       const res = await axios.post(`${API}/sessions`, {
-        title,
-        problemStatement: problem,
+        title: cleanTitle,
+        problemStatement: '',
         createdBy: parseInt(userId)
       }, { headers });
 
       const newSession = res.data;
       setSessions(prev => [newSession, ...prev]);
       setTitle('');
-      setProblem('');
-    } catch {
-      alert('Failed to create session');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to create session');
     } finally {
       setLoading(false);
     }
@@ -76,12 +83,23 @@ export default function Dashboard() {
     navigate('/login');
   };
 
-  const initials = (userName || 'IN')
+  const initials = (userName || (userRole === 'CANDIDATE' ? 'CA' : 'IN'))
     .split(' ')
     .map(n => n[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+  if (userRole === 'CANDIDATE') {
+    return (
+      <CandidateDashboardView
+        userName={userName}
+        initials={initials}
+        logout={logout}
+        navigate={navigate}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen text-white pb-16 relative">
@@ -135,25 +153,16 @@ export default function Dashboard() {
                 type="text"
                 placeholder="e.g. Senior Frontend Engineer — Technical Screen"
                 value={title}
+                maxLength={150}
+                autoComplete="off"
                 onChange={e => setTitle(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white/5 border border-white/15 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-mint focus:ring-1 focus:ring-mint transition-all"
               />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-white/70 mb-1.5">
-                Problem Statement
-              </label>
-              <textarea
-                placeholder="Describe the coding challenge, requirements, constraints, and test scenarios..."
-                value={problem}
-                onChange={e => setProblem(e.target.value)}
-                rows={4}
-                className="w-full px-4 py-2.5 bg-white/5 border border-white/15 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-mint focus:ring-1 focus:ring-mint resize-none transition-all"
-              />
+              <div className="mt-1 text-right text-[11px] text-white/35">{title.length}/150</div>
             </div>
 
             <button
+              type="button"
               onClick={createSession}
               disabled={loading}
               className="button-primary w-full sm:w-auto px-8 py-3 text-sm font-semibold tracking-wide disabled:opacity-50"
@@ -176,6 +185,7 @@ export default function Dashboard() {
             <div className="mb-4 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-xs flex items-center justify-between animate-[fadeIn_0.3s_ease-out]">
               <span>⚠️ {actionError}</span>
               <button
+                type="button"
                 onClick={() => setActionError('')}
                 className="text-red-400/60 hover:text-red-300 ml-3 text-xs"
               >
@@ -206,10 +216,22 @@ export default function Dashboard() {
                         <strong className="font-bold tracking-wider">{session.sessionCode}</strong>
                       </span>
 
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mint/10 border border-mint/20 text-mint font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-mint" />
-                        {session.status || 'Active'}
-                      </span>
+                      {session.status === 'ENDED' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/20 text-white/70 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white/40" />
+                          Ended
+                        </span>
+                      ) : session.status === 'EXPIRED' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber/10 border border-amber/25 text-amber font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber" />
+                          Expired
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mint/10 border border-mint/20 text-mint font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-mint" />
+                          Active
+                        </span>
+                      )}
 
                       <span className="text-white/50">
                         Candidate: {session.candidateName || (session.candidateId ? `#${session.candidateId}` : 'Awaiting join')}
@@ -223,12 +245,14 @@ export default function Dashboard() {
 
                   <div className="flex items-center gap-2 self-start sm:self-center">
                     <button
+                      type="button"
                       onClick={() => navigate(`/monitor/${session.sessionCode}`)}
                       className="button-primary px-4 py-2 text-xs font-semibold"
                     >
                       Open Monitor ↗
                     </button>
                     <button
+                      type="button"
                       onClick={() => deleteSession(session.sessionCode)}
                       disabled={deletingCode === session.sessionCode}
                       className="px-3 py-2 text-xs font-semibold rounded-xl text-red-400/80 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 transition-all disabled:opacity-50"
@@ -254,6 +278,172 @@ export default function Dashboard() {
             </div>
           )}
         </section>
+      </main>
+    </div>
+  );
+}
+
+function CandidateDashboardView({ userName, initials, logout, navigate }) {
+  const [sessionCode, setSessionCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState('');
+  const token = localStorage.getItem('token');
+  const userId = localStorage.getItem('userId');
+
+  const handleJoin = async (e) => {
+    e.preventDefault();
+    const code = sessionCode.trim().toUpperCase();
+    if (!code || !token) return;
+
+    setJoining(true);
+    setError('');
+
+    try {
+      // 1. Validate session exists and is active via REST API
+      const res = await axios.get(`${API}/sessions/${code}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.data || res.data.error) {
+        setError(res.data?.error || 'Session not found.');
+        return;
+      }
+
+      if (res.data.status && res.data.status !== 'ACTIVE') {
+        setError(`This interview session is ${res.data.status.toLowerCase()} and can no longer be joined.`);
+        return;
+      }
+
+      // 2. Connect/probe existing realtime server
+      await probeRealtimeJoin({
+        sessionCode: code,
+        role: 'candidate',
+        userId,
+        token,
+      });
+
+      sessionStorage.setItem(
+        `interviewshield:join:${userId}:${code}`,
+        JSON.stringify({ sessionCode: code, role: 'candidate', joinedAt: Date.now() })
+      );
+      navigate(`/interview/${code}`);
+    } catch (err) {
+      if (err?.code === 'session_occupied') {
+        setError('Session already has a candidate.');
+      } else if (err.response?.status === 404) {
+        setError('Session not found. Please check the 6-character code.');
+      } else if (err.response?.status === 403) {
+        setError('You do not have access to this session.');
+      } else {
+        setError(err?.message || err.response?.data?.error || 'Unable to join this session.');
+      }
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen text-white pb-16 relative">
+      {/* Top Navbar */}
+      <header className="max-w-5xl mx-auto px-4 pt-6">
+        <nav className="glass rounded-[24px] px-6 py-3.5 flex items-center justify-between shadow-xl">
+          <Link to="/" className="inline-flex items-center gap-3 group">
+            <span className="grid place-items-center w-8 h-8 rounded-xl bg-gradient-to-br from-mint via-cyan to-violet shadow-[0_0_14px_rgba(76,229,232,0.35)] transition-transform group-hover:scale-105">
+              <svg className="w-4 h-4" viewBox="0 0 20 22" fill="none">
+                <path d="M10 1 18.5 4.7v5.7c0 4.7-3.6 8.6-8.5 10C5.1 19 1.5 15.1 1.5 10.4V4.7L10 1Z" stroke="#071014" strokeWidth="1.5" />
+                <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="font-display font-bold text-lg tracking-tight">InterviewShield</span>
+          </Link>
+
+          <div className="flex items-center gap-3.5">
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-white/60 text-xs">Logged in as</span>
+              <span className="text-white font-medium text-xs">{userName || 'Candidate'}</span>
+              <span className="px-2 py-0.5 rounded-full bg-violet/15 border border-violet/30 text-violet text-[10px] font-semibold">Candidate</span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet to-cyan grid place-items-center font-display font-bold text-xs text-white shadow-md">
+              {initials}
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              className="button-ghost px-3.5 py-1.5 text-xs text-white/70 hover:text-white"
+            >
+              Logout
+            </button>
+          </div>
+        </nav>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-4 pt-10">
+        <div className="glass rounded-[28px] p-6 sm:p-10 shadow-2xl mb-8">
+          <div className="text-center mb-8">
+            <div className="inline-grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-mint via-cyan to-violet shadow-[0_0_20px_rgba(76,229,232,0.35)] mb-4">
+              <svg className="w-6 h-6" viewBox="0 0 20 22" fill="none">
+                <path d="M10 1 18.5 4.7v5.7c0 4.7-3.6 8.6-8.5 10C5.1 19 1.5 15.1 1.5 10.4V4.7L10 1Z" stroke="#071014" strokeWidth="1.5" />
+                <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-1">Candidate Workspace</div>
+            <h1 className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-white mb-2">Join Interview Session</h1>
+            <p className="text-white/60 text-xs sm:text-sm max-w-md mx-auto">
+              Enter the 6-character session code provided by your interviewer to start your assessment.
+            </p>
+          </div>
+
+          <form onSubmit={handleJoin} className="space-y-5 max-w-md mx-auto">
+            <div>
+              <label className="block text-xs font-semibold text-white/70 uppercase tracking-wider mb-2 text-center">
+                Session Code
+              </label>
+              <input
+                type="text"
+                value={sessionCode}
+                onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
+                placeholder="ABCDEF"
+                maxLength={6}
+                autoComplete="off"
+                className="w-full px-4 py-3.5 bg-white/5 border border-white/15 rounded-xl text-2xl font-mono tracking-widest text-center text-white placeholder-white/20 focus:outline-none focus:border-mint focus:ring-1 focus:ring-mint transition-all"
+                autoFocus
+              />
+            </div>
+
+            {error && (
+              <div className="text-red-400 text-xs text-center py-2.5 px-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                ⚠️ {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={sessionCode.length < 6 || joining}
+              className="button-primary w-full py-3.5 text-sm font-semibold tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {joining ? 'Checking session...' : 'Join Session ↗'}
+            </button>
+          </form>
+        </div>
+
+        {/* Readiness Checklist */}
+        <div className="glass rounded-2xl p-6 border border-white/10">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">Interview Checklist</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-white/75">
+            <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+              <span className="text-mint font-semibold block mb-1">📹 Video & Audio</span>
+              <span className="text-white/50 text-[11px]">Allow camera and microphone access when prompted for the call.</span>
+            </div>
+            <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+              <span className="text-cyan font-semibold block mb-1">💻 Monaco Editor</span>
+              <span className="text-white/50 text-[11px]">Write and run your solution directly in the in-browser IDE.</span>
+            </div>
+            <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+              <span className="text-amber font-semibold block mb-1">⚠️ Active Tab</span>
+              <span className="text-white/50 text-[11px]">Stay focused on the session tab; tab switches are automatically logged.</span>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );

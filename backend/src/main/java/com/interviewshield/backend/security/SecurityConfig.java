@@ -19,6 +19,8 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 
+import org.springframework.http.HttpMethod;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -39,7 +41,14 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/register", "/api/auth/login", "/error").permitAll()
+                .requestMatchers("/api/auth/**", "/error").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/sessions").hasRole("INTERVIEWER")
+                .requestMatchers("/api/sessions/mine").hasRole("INTERVIEWER")
+                .requestMatchers(HttpMethod.POST, "/api/sessions/*/end").hasRole("INTERVIEWER")
+                .requestMatchers(HttpMethod.PUT, "/api/sessions/*/end").hasRole("INTERVIEWER")
+                .requestMatchers(HttpMethod.DELETE, "/api/sessions/*").hasRole("INTERVIEWER")
+                .requestMatchers(HttpMethod.GET, "/api/logs/**").hasRole("INTERVIEWER")
+                .requestMatchers("/api/ai/**").hasRole("INTERVIEWER")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
