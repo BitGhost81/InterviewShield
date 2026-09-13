@@ -26,6 +26,7 @@ export function createRealtimeClient({
         'unsupported_message',
         'invalid_message',
         'invalid_json',
+        'session_ended',
     ]);
 
     const setStatus = (status) => onStatusChange?.(status);

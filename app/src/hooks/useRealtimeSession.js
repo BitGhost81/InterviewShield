@@ -47,5 +47,12 @@ export function useRealtimeSession({ sessionCode, role, userId, token, onMessage
 
     const send = (type, payload) => clientRef.current?.send(type, payload) || false;
 
-    return { send, status, presence, error };
+    const enabled = Boolean(sessionCode && role && token);
+
+    return {
+        send,
+        status: enabled ? status : 'idle',
+        presence: enabled ? presence : null,
+        error,
+    };
 }

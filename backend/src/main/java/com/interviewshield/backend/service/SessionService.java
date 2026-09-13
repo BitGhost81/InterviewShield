@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
@@ -20,6 +21,11 @@ import java.util.Random;
 
 @Service
 public class SessionService {
+    private static final int TITLE_MAX_LENGTH = 150;
+    private static final int SESSION_EXPIRATION_HOURS = 3;
+    private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final String STATUS_ENDED = "ENDED";
+    private static final String STATUS_EXPIRED = "EXPIRED";
 
     @Autowired
     private SessionRepository sessionRepository;
@@ -44,15 +50,43 @@ public class SessionService {
         return code.toString();
     }
 
-    public Map<String, Object> createSession(CreateSessionRequest request) {
+    public Map<String, Object> createSession(CreateSessionRequest request, String email) {
+        Map<String, Object> error = validateTitle(request.getTitle());
+        if (error != null) {
+            return error;
+        }
+
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            return Map.of("error", "Unauthorized");
+        }
+
+        if (!"INTERVIEWER".equalsIgnoreCase(user.getRole())) {
+            return Map.of("error", "Forbidden");
+        }
+
         InterviewSession session = new InterviewSession();
-        session.setTitle(request.getTitle());
-        session.setProblemStatement(request.getProblemStatement());
-        session.setCreatedBy(request.getCreatedBy());
+        session.setTitle(request.getTitle().trim());
+        session.setProblemStatement(request.getProblemStatement() == null ? "" : request.getProblemStatement());
+        session.setCreatedBy(user.getId());
         session.setSessionCode(generateSessionCode());
 
         InterviewSession saved = sessionRepository.save(session);
 
+        return toSessionResponse(saved);
+    }
+
+    private Map<String, Object> validateTitle(String title) {
+        if (title == null || title.trim().isEmpty()) {
+            return Map.of("error", "Session title is required");
+        }
+        if (title.trim().length() > TITLE_MAX_LENGTH) {
+            return Map.of("error", "Session title must be 150 characters or fewer");
+        }
+        return null;
+    }
+
+    private Map<String, Object> toSessionResponse(InterviewSession saved) {
         Map<String, Object> response = new HashMap<>();
         response.put("id", saved.getId());
         response.put("sessionCode", saved.getSessionCode());
@@ -62,6 +96,19 @@ public class SessionService {
         response.put("createdBy", saved.getCreatedBy());
         response.put("createdAt", saved.getCreatedAt());
         return response;
+    }
+
+    private InterviewSession applyExpiration(InterviewSession session) {
+        if (session == null || !STATUS_ACTIVE.equals(session.getStatus()) || session.getCreatedAt() == null) {
+            return session;
+        }
+
+        if (session.getCreatedAt().plusHours(SESSION_EXPIRATION_HOURS).isBefore(LocalDateTime.now())) {
+            session.setStatus(STATUS_EXPIRED);
+            return sessionRepository.save(session);
+        }
+
+        return session;
     }
 
     public List<Map<String, Object>> getSessionsForInterviewer(String email) {
@@ -74,6 +121,7 @@ public class SessionService {
         List<Map<String, Object>> response = new ArrayList<>();
 
         for (InterviewSession session : sessions) {
+            session = applyExpiration(session);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", session.getId());
             item.put("sessionCode", session.getSessionCode());
@@ -102,12 +150,25 @@ public class SessionService {
     }
 
     public Map<String, Object> getSessionByCode(String code) {
+        return getSessionByCode(code, null);
+    }
+
+    public Map<String, Object> getSessionByCode(String code, String email) {
         Map<String, Object> response = new HashMap<>();
-        InterviewSession session = sessionRepository.findBySessionCode(code).orElse(null);
+        InterviewSession session = applyExpiration(sessionRepository.findBySessionCode(code).orElse(null));
 
         if (session == null) {
             response.put("error", "Session not found");
             return response;
+        }
+
+        User user = (email != null && !email.isBlank()) ? userRepository.findByEmail(email).orElse(null) : null;
+        if (user != null && "INTERVIEWER".equalsIgnoreCase(user.getRole())) {
+            // An interviewer requesting session details must own the session
+            if (session.getCreatedBy() == null || !session.getCreatedBy().equals(user.getId())) {
+                response.put("error", "Forbidden");
+                return response;
+            }
         }
 
         response.put("id", session.getId());
@@ -116,33 +177,55 @@ public class SessionService {
         response.put("problemStatement", session.getProblemStatement());
         response.put("status", session.getStatus());
         response.put("createdBy", session.getCreatedBy());
+        response.put("createdAt", session.getCreatedAt());
 
-        ActivityLog latestCandidateLog = activityLogRepository
-            .findTopBySessionCodeAndCandidateIdIsNotNullOrderByCreatedAtDesc(code)
-            .orElse(null);
-        if (latestCandidateLog != null) {
-            Long candidateId = latestCandidateLog.getCandidateId();
-            response.put("candidateId", candidateId);
-            userRepository.findById(candidateId).ifPresent(candidateUser -> {
-                response.put("candidateName", candidateUser.getName());
-            });
+        if (user != null && "INTERVIEWER".equalsIgnoreCase(user.getRole())) {
+            ActivityLog latestCandidateLog = activityLogRepository
+                .findTopBySessionCodeAndCandidateIdIsNotNullOrderByCreatedAtDesc(code)
+                .orElse(null);
+            if (latestCandidateLog != null) {
+                Long candidateId = latestCandidateLog.getCandidateId();
+                response.put("candidateId", candidateId);
+                userRepository.findById(candidateId).ifPresent(candidateUser -> {
+                    response.put("candidateName", candidateUser.getName());
+                });
+            }
         }
         return response;
     }
 
-    public Map<String, Object> endSession(String code) {
+    public Map<String, Object> endSession(String code, String email) {
         Map<String, Object> response = new HashMap<>();
-        InterviewSession session = sessionRepository.findBySessionCode(code).orElse(null);
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            response.put("error", "Unauthorized");
+            return response;
+        }
+
+        InterviewSession session = applyExpiration(sessionRepository.findBySessionCode(code).orElse(null));
 
         if (session == null) {
             response.put("error", "Session not found");
             return response;
         }
 
-        session.setStatus("ENDED");
+        if (session.getCreatedBy() == null || !session.getCreatedBy().equals(user.getId())) {
+            response.put("error", "Forbidden");
+            return response;
+        }
+
+        if (STATUS_EXPIRED.equals(session.getStatus())) {
+            response.put("error", "Session already expired");
+            response.put("sessionCode", code);
+            response.put("status", STATUS_EXPIRED);
+            return response;
+        }
+
+        session.setStatus(STATUS_ENDED);
         sessionRepository.save(session);
         response.put("message", "Session ended");
         response.put("sessionCode", code);
+        response.put("status", session.getStatus());
         return response;
     }
 
@@ -156,7 +239,7 @@ public class SessionService {
             return response;
         }
 
-        InterviewSession session = sessionRepository.findBySessionCode(code).orElse(null);
+        InterviewSession session = applyExpiration(sessionRepository.findBySessionCode(code).orElse(null));
         if (session == null) {
             response.put("error", "Session not found");
             return response;

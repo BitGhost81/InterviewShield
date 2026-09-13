@@ -28,6 +28,7 @@ const API = import.meta.env.VITE_API_URL || '/api';
 export default function InterviewPage() {
     const { sessionCode } = useParams();
     const [session, setSession] = useState(null);
+    const [sessionError, setSessionError] = useState('');
     const [editorRef, setEditorRef] = useState(null);
     const [tabSwitches, setTabSwitches] = useState(0);
     const [, setSnapshotCount] = useState(0);
@@ -39,6 +40,7 @@ export default function InterviewPage() {
     const realtimeSendRef = useRef(null);
     const realtimeConnectedRef = useRef(false);
     const webRtcSignalRef = useRef(null);
+    const activeSessionCode = session?.status === 'ACTIVE' ? sessionCode : null;
 
     const sendCodeSnapshot = useCallback(() => {
         if (!editorRef) return;
@@ -49,11 +51,17 @@ export default function InterviewPage() {
     }, [editorRef]);
 
     const { status: realtimeStatus, presence, send: sendRealtime } = useRealtimeSession({
-        sessionCode,
+        sessionCode: activeSessionCode,
         role: 'candidate',
         userId: candidateId,
         token,
         onMessage: (message) => {
+            if (message.type === MESSAGE_TYPES.ERROR && message.payload?.code === 'session_ended') {
+                setSession((prev) => ({ ...(prev || {}), status: 'ENDED' }));
+                setSessionError('This interview session has ended.');
+                return;
+            }
+
             if (message.type === MESSAGE_TYPES.PRESENCE && message.payload?.interviewerConnected) {
                 sendCodeSnapshot();
             }
@@ -93,12 +101,20 @@ export default function InterviewPage() {
     useEffect(() => {
         const headers = { Authorization: `Bearer ${token}` };
         axios.get(`${API}/sessions/${sessionCode}`, { headers })
-            .then(res => setSession(res.data))
-            .catch(() => alert('Session not found'));
+            .then(res => {
+                setSession(res.data);
+                if (res.data?.status && res.data.status !== 'ACTIVE') {
+                    setSessionError(`This interview session is ${res.data.status.toLowerCase()} and can no longer be joined.`);
+                } else {
+                    setSessionError('');
+                }
+            })
+            .catch(() => setSessionError('Session not found'));
     }, [sessionCode, token]);
 
     // Tab switch detection
     useEffect(() => {
+        if (session?.status !== 'ACTIVE') return;
         const headers = { Authorization: `Bearer ${token}` };
         const handleVisibilityChange = () => {
             if (document.hidden) {
@@ -135,10 +151,11 @@ export default function InterviewPage() {
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [sessionCode, candidateId, tabSwitches, token]);
+    }, [sessionCode, candidateId, tabSwitches, token, session?.status]);
 
     // Webcam snapshot every 30 seconds
     useEffect(() => {
+        if (session?.status !== 'ACTIVE') return;
         const headers = { Authorization: `Bearer ${token}` };
         const interval = setInterval(() => {
             if (!call.localVideoRef.current) return;
@@ -160,7 +177,7 @@ export default function InterviewPage() {
         }, 30000);
 
         return () => clearInterval(interval);
-    }, [sessionCode, candidateId, call.localVideoRef, token]);
+    }, [sessionCode, candidateId, call.localVideoRef, token, session?.status]);
 
     // Monaco sync with Firebase
     const handleEditorMount = (editor) => {
@@ -287,6 +304,34 @@ export default function InterviewPage() {
             document.body.appendChild(iframe);
         });
     };
+
+    if (!session && !sessionError) {
+        return (
+            <div className="min-h-screen text-white relative flex items-center justify-center px-4">
+                <div className="glass rounded-[24px] p-8 max-w-md w-full text-center border border-white/15">
+                    <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-2">InterviewShield</div>
+                    <h1 className="font-display font-bold text-2xl mb-3">Loading Session</h1>
+                    <p className="text-white/65 text-sm">Checking whether this interview is active...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (sessionError) {
+        return (
+            <div className="min-h-screen text-white relative flex items-center justify-center px-4">
+                <div className="glass rounded-[24px] p-8 max-w-md w-full text-center border border-white/15">
+                    <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-2">InterviewShield</div>
+                    <h1 className="font-display font-bold text-2xl mb-3">Session Unavailable</h1>
+                    <p className="text-white/65 text-sm mb-6">{sessionError}</p>
+                    <Link to="/dashboard" className="button-primary inline-flex px-5 py-2 text-xs font-semibold">
+                        Back to Dashboard
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="h-screen flex flex-col text-white overflow-hidden relative">
             {/* Top Bar */}
@@ -341,12 +386,12 @@ export default function InterviewPage() {
                 {/* Left Column: Problem & Video */}
                 <div className="w-80 flex flex-col gap-3 overflow-y-auto flex-shrink-0">
                     <div className="glass rounded-2xl p-5 shadow-lg flex-shrink-0">
-                        <div className="text-mint text-[10px] font-bold uppercase tracking-widest mb-1.5">Problem Statement</div>
+                        <div className="text-mint text-[10px] font-bold uppercase tracking-widest mb-1.5">Session</div>
                         <h2 className="font-display font-bold text-lg text-white mb-2.5 leading-snug">
                             {session?.title || 'Loading problem...'}
                         </h2>
                         <p className="text-white/75 text-xs leading-relaxed whitespace-pre-wrap">
-                            {session?.problemStatement || 'Please wait while the problem details load.'}
+                            {session?.problemStatement || 'Your interviewer will provide the question during the interview.'}
                         </p>
                     </div>
 

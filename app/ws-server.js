@@ -75,6 +75,11 @@ wss.on('connection', (socket) => {
     }
 
     if (message.type === LEAVE_SESSION) {
+      if (socket.context.role === 'interviewer' && message.payload?.reason === 'session_ended') {
+        await handleSessionEnded(socket);
+        return;
+      }
+
       removeSocket(socket);
       closeSocket(socket, 1000, 'Left session');
       return;
@@ -144,6 +149,7 @@ async function handleJoin(socket, message) {
     role: requestedRole,
     email: auth.email,
     senderId: message.senderId ? String(message.senderId) : null,
+    token,
   };
 
   if (existingSocket && existingSocket !== socket) {
@@ -153,6 +159,36 @@ async function handleJoin(socket, message) {
 
   room[requestedRole] = socket;
   broadcastPresence(sessionCode);
+}
+
+async function handleSessionEnded(socket) {
+  const { sessionCode, token } = socket.context;
+  const ended = await verifySessionEnded(sessionCode, token);
+
+  if (!ended) {
+    sendError(socket, 'session_not_ended', 'Session has not been ended by the server.');
+    return;
+  }
+
+  notifyAndCloseSession(sessionCode, 'session_ended', 'This interview session has ended.');
+}
+
+function notifyAndCloseSession(sessionCode, code, message) {
+  const room = rooms.get(sessionCode);
+  if (!room) return;
+
+  for (const peer of [room.candidate, room.interviewer]) {
+    sendError(peer, code, message);
+  }
+
+  for (const peer of [room.candidate, room.interviewer]) {
+    if (peer) {
+      removeSocket(peer);
+      closeSocket(peer, 1000, 'Session ended');
+    }
+  }
+
+  rooms.delete(sessionCode);
 }
 
 function getRoom(sessionCode) {
@@ -249,7 +285,23 @@ async function verifySessionExists(sessionCode, token) {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    return response.ok;
+    if (!response.ok) return false;
+    const session = await response.json();
+    return session.status === 'ACTIVE';
+  } catch {
+    return false;
+  }
+}
+
+async function verifySessionEnded(sessionCode, token) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionCode)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) return false;
+    const session = await response.json();
+    return session.status === 'ENDED' || session.status === 'EXPIRED';
   } catch {
     return false;
   }

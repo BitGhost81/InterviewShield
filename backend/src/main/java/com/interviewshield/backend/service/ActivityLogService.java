@@ -16,6 +16,9 @@ import java.util.Map;
 
 @Service
 public class ActivityLogService {
+    private static final int SESSION_EXPIRATION_HOURS = 3;
+    private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final String STATUS_EXPIRED = "EXPIRED";
 
     @Autowired
     private ActivityLogRepository activityLogRepository;
@@ -75,6 +78,12 @@ public class ActivityLogService {
         });
 
         sessionRepository.findBySessionCode(sessionCode).ifPresent(session -> {
+            if (STATUS_ACTIVE.equals(session.getStatus())
+                    && session.getCreatedAt() != null
+                    && session.getCreatedAt().plusHours(SESSION_EXPIRATION_HOURS).isBefore(LocalDateTime.now())) {
+                session.setStatus(STATUS_EXPIRED);
+                sessionRepository.save(session);
+            }
             report.put("sessionTitle", session.getTitle());
             report.put("sessionProblem", session.getProblemStatement());
             report.put("sessionStatus", session.getStatus());

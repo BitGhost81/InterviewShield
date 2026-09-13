@@ -47,22 +47,37 @@ export default function MonitorPage() {
     const navigate = useNavigate();
     const [alerts, setAlerts] = useState({});
     const [report, setReport] = useState(null);
+    const [session, setSession] = useState(null);
     const [selectedCandidate, setSelectedCandidate] = useState(null);
     const [candidateNames, setCandidateNames] = useState({});
+    const [endingSession, setEndingSession] = useState(false);
+    const [currentQuestion, setCurrentQuestion] = useState('');
+    const [completedAnswer, setCompletedAnswer] = useState('');
+    const [copilotQuestions, setCopilotQuestions] = useState([]);
+    const [copilotLoading, setCopilotLoading] = useState(false);
+    const [copilotError, setCopilotError] = useState('');
     const token = localStorage.getItem('token');
+    const userRole = localStorage.getItem('userRole');
     const headers = React.useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
     const [liveCode, setLiveCode] = useState(null);
     const [candidateCode, setCandidateCode] = useState('');
     const candidateCodeRef = React.useRef('');
     const codeVersionRef = React.useRef(0);
     const webRtcSignalRef = React.useRef(null);
+    const lastCopilotRequestRef = React.useRef('');
+    const activeRealtimeSessionCode = session?.status === 'ACTIVE' ? sessionCode : null;
 
     const { status: realtimeStatus, presence, send: sendRealtime } = useRealtimeSession({
-        sessionCode,
+        sessionCode: activeRealtimeSessionCode,
         role: 'interviewer',
         userId: localStorage.getItem('userId'),
         token,
         onMessage: (message) => {
+            if (message.type === MESSAGE_TYPES.ERROR && message.payload?.code === 'session_ended') {
+                setSession((prev) => ({ ...(prev || {}), status: 'ENDED' }));
+                return;
+            }
+
             if (message.type === MESSAGE_TYPES.PRESENCE && message.payload?.candidateConnected) {
                 sendRealtime(MESSAGE_TYPES.CODE_RESYNC, {
                     reason: 'interviewer_joined',
@@ -133,6 +148,84 @@ export default function MonitorPage() {
     useEffect(() => {
         webRtcSignalRef.current = call.handleSignal;
     }, [call.handleSignal]);
+
+    useEffect(() => {
+        if (!token) {
+            navigate('/login');
+            return;
+        }
+        if (userRole !== 'INTERVIEWER') {
+            navigate('/dashboard', { replace: true });
+            return;
+        }
+        axios.get(`${API}/sessions/${sessionCode}`, { headers })
+            .then((res) => setSession(res.data))
+            .catch((err) => {
+                if (err.response?.status === 403) {
+                    alert('You do not have permission to monitor this session.');
+                    navigate('/dashboard', { replace: true });
+                } else {
+                    setSession(null);
+                }
+            });
+    }, [sessionCode, token, userRole, headers, navigate]);
+
+    const endSession = async () => {
+        if (!window.confirm(`End session ${sessionCode}? Candidates will no longer be able to join this interview.`)) {
+            return;
+        }
+
+        setEndingSession(true);
+        try {
+            const res = await axios.post(`${API}/sessions/${sessionCode}/end`, {}, { headers });
+            sendRealtime(MESSAGE_TYPES.LEAVE_SESSION, { reason: 'session_ended' });
+            setSession((prev) => ({ ...(prev || {}), status: res.data?.status || 'ENDED' }));
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to end session');
+        } finally {
+            setEndingSession(false);
+        }
+    };
+
+    const requestCopilotQuestions = async () => {
+        const question = currentQuestion.trim();
+        const answer = completedAnswer.trim();
+        if (!question || answer.length < 10) {
+            setCopilotError('Enter the current question and a completed candidate answer.');
+            return;
+        }
+
+        const requestKey = `${question}\n---\n${answer}`;
+        if (requestKey === lastCopilotRequestRef.current) return;
+
+        lastCopilotRequestRef.current = requestKey;
+        setCopilotLoading(true);
+        setCopilotError('');
+        try {
+            const res = await axios.post(`${API}/ai/copilot/questions`, {
+                context: {
+                    session_id: sessionCode,
+                    role: session?.title || '',
+                    job_description: session?.title || '',
+                    resume: '',
+                    candidate_profile: activeCandidateId ? getCandidateDisplayName(activeCandidateId) : '',
+                    difficulty: 'medium',
+                    topics: session?.title ? [session.title] : [],
+                    history: [],
+                },
+                question,
+                answer,
+            }, { headers });
+
+            const questions = Array.isArray(res.data?.questions) ? res.data.questions.slice(0, 3) : [];
+            setCopilotQuestions(questions);
+        } catch (err) {
+            lastCopilotRequestRef.current = '';
+            setCopilotError(err.response?.data?.error || 'AI Copilot is unavailable right now.');
+        } finally {
+            setCopilotLoading(false);
+        }
+    };
 
     // Live alerts from Firebase
     useEffect(() => {
@@ -240,7 +333,9 @@ export default function MonitorPage() {
 
     const activeCandidateName = activeCandidateId ? getCandidateDisplayName(activeCandidateId) : 'Candidate';
 
-    if (!token) { navigate('/login'); return null; }
+    if (!token || userRole !== 'INTERVIEWER') {
+        return null;
+    }
 
     return (
         <div className="min-h-screen text-white pb-16 relative">
@@ -267,7 +362,18 @@ export default function MonitorPage() {
                         </div>
                     </div>
 
+                    {session?.status === 'ACTIVE' && (
+                        <button
+                            type="button"
+                            onClick={endSession}
+                            disabled={endingSession}
+                            className="px-4 py-1.5 text-xs font-semibold rounded-xl text-red-300 hover:text-red-200 hover:bg-red-500/10 border border-red-500/25 transition-all disabled:opacity-50"
+                        >
+                            {endingSession ? 'Ending...' : 'End Session'}
+                        </button>
+                    )}
                     <button
+                        type="button"
                         onClick={() => navigate('/dashboard')}
                         className="button-ghost px-4 py-1.5 text-xs font-semibold"
                     >
@@ -304,6 +410,51 @@ export default function MonitorPage() {
                                         ? 'Candidate is connected. Live synchronization and proctoring are active.'
                                         : 'Waiting for candidate to join this session...'}
                                 </span>
+                            </div>
+
+                            <div className="glass rounded-2xl p-5 border border-white/15">
+                                <div className="flex items-center justify-between gap-3 mb-4">
+                                    <div>
+                                        <div className="text-mint text-[10px] font-bold uppercase tracking-widest mb-1">AI Copilot</div>
+                                        <h2 className="font-display font-semibold text-base text-white">Suggested Follow-up Questions</h2>
+                                    </div>
+                                    <span className="text-[11px] text-white/45">{session?.status || 'ACTIVE'}</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                    <input
+                                        type="text"
+                                        value={currentQuestion}
+                                        onChange={(e) => setCurrentQuestion(e.target.value)}
+                                        placeholder="Current interviewer question"
+                                        className="w-full px-3.5 py-2 bg-white/5 border border-white/15 rounded-xl text-white text-xs placeholder-white/30 focus:outline-none focus:border-mint"
+                                    />
+                                    <textarea
+                                        value={completedAnswer}
+                                        onChange={(e) => setCompletedAnswer(e.target.value)}
+                                        placeholder="Completed candidate answer"
+                                        rows={2}
+                                        className="w-full px-3.5 py-2 bg-white/5 border border-white/15 rounded-xl text-white text-xs placeholder-white/30 focus:outline-none focus:border-mint resize-none"
+                                    />
+                                </div>
+                                <button
+                                    onClick={requestCopilotQuestions}
+                                    disabled={copilotLoading}
+                                    className="button-primary px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                                >
+                                    {copilotLoading ? 'Generating...' : 'Generate Suggestions'}
+                                </button>
+                                {copilotError && (
+                                    <div className="mt-3 text-xs text-red-300">{copilotError}</div>
+                                )}
+                                {copilotQuestions.length > 0 && (
+                                    <ol className="mt-4 space-y-2">
+                                        {copilotQuestions.map((question, index) => (
+                                            <li key={`${question}-${index}`} className="text-xs text-white/80 leading-relaxed bg-white/5 border border-white/10 rounded-xl px-3.5 py-2">
+                                                {question}
+                                            </li>
+                                        ))}
+                                    </ol>
+                                )}
                             </div>
 
                             {/* Active Candidate Card */}
