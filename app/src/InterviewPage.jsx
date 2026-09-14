@@ -76,6 +76,8 @@ export default function InterviewPage() {
         },
     });
 
+
+
     const call = useWebRTCCall({
         isInitiator: true,
         peerConnected: Boolean(presence?.interviewerConnected),

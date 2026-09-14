@@ -15,7 +15,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -31,8 +30,8 @@ public class AiCopilotController {
         this.objectMapper = objectMapper;
     }
 
-    @PostMapping("/questions")
-    public ResponseEntity<Map<String, Object>> suggestQuestions(
+    @PostMapping("/chat")
+    public ResponseEntity<Map<String, Object>> copilotChat(
             @RequestBody Map<String, Object> request,
             Authentication authentication
     ) {
@@ -43,7 +42,7 @@ public class AiCopilotController {
         try {
             String body = objectMapper.writeValueAsString(request);
             HttpRequest aiRequest = HttpRequest.newBuilder()
-                .uri(URI.create(aiBaseUrl.replaceAll("/+$", "") + "/copilot/questions"))
+                .uri(URI.create(aiBaseUrl.replaceAll("/+$", "") + "/chat"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
@@ -54,17 +53,9 @@ public class AiCopilotController {
             }
 
             JsonNode json = objectMapper.readTree(aiResponse.body());
-            JsonNode questionsNode = json.get("questions");
-            if (questionsNode == null || !questionsNode.isArray()) {
-                return ResponseEntity.status(502).body(Map.of("error", "AI copilot returned an invalid response"));
-            }
-
-            List<String> questions = objectMapper.convertValue(
-                questionsNode,
-                objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
-            );
+            String reply = json.has("reply") ? json.get("reply").asText("") : (json.has("message") ? json.get("message").asText("") : "");
             Map<String, Object> response = new HashMap<>();
-            response.put("questions", questions);
+            response.put("reply", reply);
             return ResponseEntity.ok(response);
         } catch (Exception ex) {
             return ResponseEntity.status(502).body(Map.of("error", "AI copilot unavailable"));
