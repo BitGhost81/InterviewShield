@@ -53,11 +53,53 @@ export default function MonitorPage() {
     const [candidateNames, setCandidateNames] = useState({});
     const [endingSession, setEndingSession] = useState(false);
     const [copilotOpen, setCopilotOpen] = useState(false);
+    const [aiReportData, setAiReportData] = useState(null);
     const token = localStorage.getItem('token');
     const userRole = localStorage.getItem('userRole');
     const headers = React.useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
     const [liveCode, setLiveCode] = useState(null);
     const [candidateCode, setCandidateCode] = useState('');
+
+    useEffect(() => {
+        if (!sessionCode || !token) return;
+        let isSubscribed = true;
+        let interval = null;
+
+        const TERMINAL_STATUSES = ['COMPLETED', 'FAILED'];
+
+        const fetchAiReport = async () => {
+            try {
+                const res = await axios.get(`${API}/sessions/${sessionCode}/ai-report`, { headers });
+                if (isSubscribed) {
+                    setAiReportData(res.data);
+                    // Stop polling once we reach a terminal AI status
+                    if (TERMINAL_STATUSES.includes(res.data?.aiStatus)) {
+                        clearInterval(interval);
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to fetch AI report:', err);
+            }
+        };
+
+        fetchAiReport();
+        interval = setInterval(fetchAiReport, 5000);
+        return () => {
+            isSubscribed = false;
+            clearInterval(interval);
+        };
+    }, [sessionCode, token, headers]);
+
+    const parsedAiReport = React.useMemo(() => {
+        if (!aiReportData?.aiReportJson) return null;
+        try {
+            return typeof aiReportData.aiReportJson === 'string'
+                ? JSON.parse(aiReportData.aiReportJson)
+                : aiReportData.aiReportJson;
+        } catch {
+            return null;
+        }
+    }, [aiReportData]);
     const candidateCodeRef = React.useRef('');
     const codeVersionRef = React.useRef(0);
     const webRtcSignalRef = React.useRef(null);
@@ -140,6 +182,7 @@ export default function MonitorPage() {
         peerConnected: Boolean(presence?.candidateConnected),
         sendSignal: sendRealtime,
     });
+    const { stopRecording } = call;
 
     useEffect(() => {
         webRtcSignalRef.current = call.handleSignal;
@@ -173,11 +216,30 @@ export default function MonitorPage() {
 
         setEndingSession(true);
         try {
+            // Step 1: Stop recording and get final audio Blob (max 3s wait via timeout safeguard)
+            const audioBlob = await stopRecording();
+
+            // Step 2: Fire-and-forget audio upload — do NOT await. The interviewer must NOT wait for upload.
+            // Audio is dispatched to Spring in the background; session end proceeds immediately.
+            if (audioBlob && audioBlob.size > 0) {
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'interview_recording.webm');
+                axios.post(`${API}/sessions/${sessionCode}/process-audio`, formData, {
+                    headers: { ...headers, 'Content-Type': 'multipart/form-data' },
+                }).catch((uploadErr) => {
+                    console.warn('[AI] Audio upload failed silently (session still ends):', uploadErr);
+                });
+            }
+
+            // Step 3: End the session immediately (does not wait for audio upload or AI processing)
             const res = await axios.post(`${API}/sessions/${sessionCode}/end`, {}, { headers });
+
+            // Step 4: Kick candidate via WebSocket signal
             sendRealtime(MESSAGE_TYPES.LEAVE_SESSION, { reason: 'session_ended' });
-            setSession((prev) => ({ ...(prev || {}), status: res.data?.status || 'ENDED' }));
+            setSession((prev) => ({ ...(prev || {}), status: res.data?.status || 'ENDED', aiStatus: 'PROCESSING' }));
         } catch (err) {
-            alert(err.response?.data?.error || 'Failed to end session');
+            // Restore button state so interviewer can try again
+            alert(err.response?.data?.error || 'Failed to end session. Please try again.');
         } finally {
             setEndingSession(false);
         }
@@ -595,6 +657,99 @@ export default function MonitorPage() {
                                     {getRiskLabel(report.riskScore)}
                                 </div>
                             </div>
+                        </div>
+
+                        {/* AI Interview Report Section */}
+                        <div className="mb-8 p-5 rounded-2xl bg-white/5 border border-white/15">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-mint shadow-[0_0_8px_#4ce5e8]" />
+                                    <h3 className="font-display font-semibold text-white text-sm uppercase tracking-wider">
+                                        AI Interview Report
+                                    </h3>
+                                </div>
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-mono font-medium ${
+                                    aiReportData?.aiStatus === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                                    aiReportData?.aiStatus === 'PROCESSING' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30 animate-pulse' :
+                                    aiReportData?.aiStatus === 'FAILED' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                                    'bg-white/10 text-white/50'
+                                }`}>
+                                    {aiReportData?.aiStatus || 'PENDING'}
+                                </span>
+                            </div>
+
+                            {aiReportData?.aiStatus === 'PROCESSING' && (
+                                <div className="py-6 text-center text-xs text-white/60 space-y-2">
+                                    <div className="inline-block w-5 h-5 border-2 border-mint border-t-transparent rounded-full animate-spin mb-2" />
+                                    <p>Transcribing audio with Gemini & generating report...</p>
+                                </div>
+                            )}
+
+                            {aiReportData?.aiStatus === 'FAILED' && (
+                                <div className="py-4 px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
+                                    ⚠️ AI interview transcription or report generation was unavailable for this session.
+                                </div>
+                            )}
+
+                            {aiReportData?.aiStatus === 'COMPLETED' && parsedAiReport && (
+                                <div className="space-y-4 text-xs leading-relaxed text-white/90">
+                                    {parsedAiReport.summary && (
+                                        <div>
+                                            <h4 className="font-semibold text-mint mb-1">Summary</h4>
+                                            <p className="text-white/80">{parsedAiReport.summary}</p>
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(parsedAiReport.strengths) && parsedAiReport.strengths.length > 0 && (
+                                        <div>
+                                            <h4 className="font-semibold text-emerald-400 mb-1">Strengths</h4>
+                                            <ul className="list-disc list-inside space-y-1 text-white/80">
+                                                {parsedAiReport.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(parsedAiReport.areas_for_improvement) && parsedAiReport.areas_for_improvement.length > 0 && (
+                                        <div>
+                                            <h4 className="font-semibold text-amber mb-1">Areas for Improvement</h4>
+                                            <ul className="list-disc list-inside space-y-1 text-white/80">
+                                                {parsedAiReport.areas_for_improvement.map((a, i) => <li key={i}>{a}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(parsedAiReport.topics_discussed) && parsedAiReport.topics_discussed.length > 0 && (
+                                        <div>
+                                            <h4 className="font-semibold text-cyan mb-1">Topics Discussed</h4>
+                                            <div className="flex flex-wrap gap-1.5 mt-1">
+                                                {parsedAiReport.topics_discussed.map((t, i) => (
+                                                    <span key={i} className="px-2 py-0.5 rounded-md bg-white/10 text-white/90 text-[11px]">
+                                                        {t}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {parsedAiReport.overall_observations && (
+                                        <div>
+                                            <h4 className="font-semibold text-white/90 mb-1">Overall Observations</h4>
+                                            <p className="text-white/80">{parsedAiReport.overall_observations}</p>
+                                        </div>
+                                    )}
+
+                                    {aiReportData?.aiTranscript && (
+                                        <details className="mt-4 pt-3 border-t border-white/10">
+                                            <summary className="cursor-pointer font-semibold text-mint hover:underline text-xs">
+                                                View Final Diarized Transcript
+                                            </summary>
+                                            <pre className="mt-2.5 p-3 rounded-xl bg-black/40 border border-white/10 font-mono text-[11px] whitespace-pre-wrap text-white/80 max-h-60 overflow-y-auto">
+                                                {aiReportData.aiTranscript}
+                                            </pre>
+                                        </details>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Tab Switch Timeline */}

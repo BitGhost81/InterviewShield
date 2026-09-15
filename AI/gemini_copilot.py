@@ -3,7 +3,7 @@ import json
 import urllib.request
 import urllib.error
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -12,9 +12,11 @@ if env_path.exists():
 else:
     load_dotenv()
 
+from interview_ai import process_audio_payload
+
 class GeminiCopilotHandler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path != "/chat":
+        if self.path not in ("/chat", "/process-audio"):
             self.send_response(404)
             self.end_headers()
             self.wfile.write(b'{"error": "Not found"}')
@@ -30,6 +32,16 @@ class GeminiCopilotHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(b'{"error": "Invalid JSON"}')
+            return
+
+        if self.path == "/process-audio":
+            status_code, resp_dict = process_audio_payload(req_data)
+            out_bytes = json.dumps(resp_dict).encode('utf-8')
+            self.send_response(status_code)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(out_bytes)))
+            self.end_headers()
+            self.wfile.write(out_bytes)
             return
 
         message = req_data.get('message', '')
@@ -126,8 +138,8 @@ class GeminiCopilotHandler(BaseHTTPRequestHandler):
 
 def run():
     server_address = ('127.0.0.1', 8000)
-    httpd = HTTPServer(server_address, GeminiCopilotHandler)
-    print("Gemini Copilot service running on http://127.0.0.1:8000")
+    httpd = ThreadingHTTPServer(server_address, GeminiCopilotHandler)
+    print("Gemini Copilot service running on http://127.0.0.1:8000 (threaded)")
     httpd.serve_forever()
 
 if __name__ == "__main__":

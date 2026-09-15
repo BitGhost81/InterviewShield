@@ -24,12 +24,24 @@ public class InterviewSession {
 	
 	private String status;
 	
+	@Column(columnDefinition = "LONGTEXT")
+	private String aiTranscript;
+
+	@Column(columnDefinition = "LONGTEXT")
+	private String aiReportJson;
+
+	@Column(length = 30)
+	private String aiStatus;
+	
 	private LocalDateTime createdAt;
 	
 	@PrePersist
 	public void prePersist() {
 		this.createdAt = LocalDateTime.now();
 		this.status = "ACTIVE";
+		if (this.aiStatus == null) {
+			this.aiStatus = "PENDING";
+		}
 	}
 
 	public long getId() {
@@ -78,6 +90,30 @@ public class InterviewSession {
 
 	public void setStatus(String status) {
 		this.status = status;
+	}
+
+	public String getAiTranscript() {
+		return aiTranscript;
+	}
+
+	public void setAiTranscript(String aiTranscript) {
+		this.aiTranscript = aiTranscript;
+	}
+
+	public String getAiReportJson() {
+		return aiReportJson;
+	}
+
+	public void setAiReportJson(String aiReportJson) {
+		this.aiReportJson = aiReportJson;
+	}
+
+	public String getAiStatus() {
+		return aiStatus;
+	}
+
+	public void setAiStatus(String aiStatus) {
+		this.aiStatus = aiStatus;
 	}
 
 	public LocalDateTime getCreatedAt() {
