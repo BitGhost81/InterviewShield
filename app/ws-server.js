@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createServer as createHttpsServer } from 'node:https';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,17 +27,36 @@ const WEBRTC_ANSWER = 'webrtc_answer';
 const WEBRTC_ICE_CANDIDATE = 'webrtc_ice_candidate';
 const ERROR = 'error';
 
-const rooms = new Map();
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const httpsServer = createHttpsServer({
-  key: readFileSync(resolve(__dirname, '192.168.1.9+2-key.pem')),
-  cert: readFileSync(resolve(__dirname, '192.168.1.9+2.pem')),
-});
+
+function getCertFiles() {
+  const dir = __dirname;
+  if (existsSync(resolve(dir, 'cert.pem')) && existsSync(resolve(dir, 'key.pem'))) {
+    return {
+      key: readFileSync(resolve(dir, 'key.pem')),
+      cert: readFileSync(resolve(dir, 'cert.pem')),
+    };
+  }
+  const files = readdirSync(dir);
+  const keyFile = files.find(f => f.endsWith('-key.pem') || f === 'key.pem');
+  const certFile = files.find(f => f.endsWith('.pem') && !f.endsWith('-key.pem') && f !== 'key.pem');
+  if (keyFile && certFile) {
+    return {
+      key: readFileSync(resolve(dir, keyFile)),
+      cert: readFileSync(resolve(dir, certFile)),
+    };
+  }
+  throw new Error('No SSL certificates found in app directory. Please run setup.bat or mkcert.');
+}
+
+const rooms = new Map();
+const httpsServer = createHttpsServer(getCertFiles());
 
 const wss = new WebSocketServer({ server: httpsServer });
 
 httpsServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`Secure realtime WebSocket server running on wss://192.168.1.9:${PORT}`);
+  console.log(`Secure realtime WebSocket server running on port ${PORT} (wss://0.0.0.0:${PORT})`);
 });
 
 wss.on('connection', (socket) => {

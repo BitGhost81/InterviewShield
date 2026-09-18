@@ -1,2 +1,8 @@
 app/*.pemapp/*.pem 
 .env
+
+# Local SSL certificates
+app/*.pem
+
+# Python cache
+AI/__pycache__/

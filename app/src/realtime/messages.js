@@ -16,6 +16,5 @@ export const MESSAGE_TYPES = {
 };
 
 export const REALTIME_URL = import.meta.env.VITE_REALTIME_URL
-    || (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-        ? 'wss://localhost:1234'
-        : `wss://${(typeof window !== 'undefined' && window.location.hostname) || '192.168.1.9'}:1234`);
+    || `wss://${(typeof window !== 'undefined' && window.location.hostname) || 'localhost'}:1234`;
+
