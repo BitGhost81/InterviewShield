@@ -295,6 +295,11 @@ function CandidateDashboardView({ userName, initials, logout, navigate }) {
     const code = sessionCode.trim().toUpperCase();
     if (!code || !token) return;
 
+    // Synchronously request browser fullscreen within the user gesture context
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+
     setJoining(true);
     setError('');
 
@@ -305,11 +310,13 @@ function CandidateDashboardView({ userName, initials, logout, navigate }) {
       });
 
       if (!res.data || res.data.error) {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         setError(res.data?.error || 'Session not found.');
         return;
       }
 
       if (res.data.status && res.data.status !== 'ACTIVE') {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         setError(`This interview session is ${res.data.status.toLowerCase()} and can no longer be joined.`);
         return;
       }
@@ -328,6 +335,7 @@ function CandidateDashboardView({ userName, initials, logout, navigate }) {
       );
       navigate(`/interview/${code}`);
     } catch (err) {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       if (err?.code === 'session_occupied') {
         setError('Session already has a candidate.');
       } else if (err.response?.status === 404) {

@@ -31,11 +31,16 @@ export default function InterviewPage() {
     const [sessionError, setSessionError] = useState('');
     const [editorRef, setEditorRef] = useState(null);
     const [tabSwitches, setTabSwitches] = useState(0);
-    const [, setSnapshotCount] = useState(0);
+    
     const candidateId = parseInt(localStorage.getItem('userId'));
     const token = localStorage.getItem('token');
     const [output, setOutput] = useState('');
     const [showConsole, setShowConsole] = useState(false);
+    const initialFullscreen = typeof document !== 'undefined' ? Boolean(document.fullscreenElement) : false;
+    const [isFullscreenLocked, setIsFullscreenLocked] = useState(initialFullscreen);
+    const [focusWarning, setFocusWarning] = useState(null);
+    const isFullscreenRef = useRef(initialFullscreen);
+    const isAwayRef = useRef(false);
     const codeVersionRef = useRef(0);
     const realtimeSendRef = useRef(null);
     const realtimeConnectedRef = useRef(false);
@@ -114,72 +119,136 @@ export default function InterviewPage() {
             .catch(() => setSessionError('Session not found'));
     }, [sessionCode, token]);
 
-    // Tab switch detection
+    // Helper to request fullscreen mode
+    const requestFullscreenMode = useCallback(() => {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {
+                setIsFullscreenLocked(false);
+                isFullscreenRef.current = false;
+            });
+        }
+    }, []);
+
+    // Fullscreen lock effect
     useEffect(() => {
         if (session?.status !== 'ACTIVE') return;
         const headers = { Authorization: `Bearer ${token}` };
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
+
+        const handleFullscreenChange = () => {
+            const isCurrentlyFullscreen = Boolean(document.fullscreenElement);
+            if (!isCurrentlyFullscreen && isFullscreenRef.current) {
+                isFullscreenRef.current = false;
+                setIsFullscreenLocked(false);
                 const timestamp = new Date().toISOString();
 
-                // Save to backend
                 axios.post(`${API}/logs`, {
                     sessionCode,
                     candidateId,
-                    eventType: 'TAB_SWITCH',
-                    eventData: timestamp
-                }, { headers });
+                    eventType: 'FULLSCREEN_EXIT',
+                    eventData: timestamp,
+                }, { headers }).catch(() => {});
 
-                // Push to Firebase for live alert
-                update(ref(db, `alerts/${sessionCode}/${candidateId}`), {
-                    tabSwitches: increment(1),
-                    lastAlert: timestamp
-                });
-
-                realtimeSendRef.current?.(MESSAGE_TYPES.TAB_SWITCH, {
+                realtimeSendRef.current?.(MESSAGE_TYPES.FULLSCREEN_EXIT, {
                     candidateId,
                     occurredAt: timestamp,
-                    count: tabSwitches + 1,
                 });
+            } else if (isCurrentlyFullscreen && !isFullscreenRef.current) {
+                isFullscreenRef.current = true;
+                setIsFullscreenLocked(true);
+                const timestamp = new Date().toISOString();
 
-                setTabSwitches(prev => prev + 1);
-            } else {
-                realtimeSendRef.current?.(MESSAGE_TYPES.TAB_RETURN, {
+                axios.post(`${API}/logs`, {
+                    sessionCode,
                     candidateId,
-                    occurredAt: new Date().toISOString(),
+                    eventType: 'FULLSCREEN_RESTORE',
+                    eventData: timestamp,
+                }, { headers }).catch(() => {});
+
+                realtimeSendRef.current?.(MESSAGE_TYPES.FULLSCREEN_RESTORE, {
+                    candidateId,
+                    occurredAt: timestamp,
                 });
             }
         };
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [sessionCode, candidateId, tabSwitches, token, session?.status]);
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, [sessionCode, candidateId, token, session?.status]);
 
-    // Webcam snapshot every 30 seconds
+    // Focus & Visibility integrity detection (deduplicated)
     useEffect(() => {
         if (session?.status !== 'ACTIVE') return;
         const headers = { Authorization: `Bearer ${token}` };
-        const interval = setInterval(() => {
-            if (!call.localVideoRef.current) return;
 
-            const canvas = document.createElement('canvas');
-            canvas.width = 320;
-            canvas.height = 240;
-            canvas.getContext('2d').drawImage(call.localVideoRef.current, 0, 0, 320, 240);
-            const base64 = canvas.toDataURL('image/jpeg', 0.5);
+        const handleAway = () => {
+            if (isAwayRef.current) return;
+            isAwayRef.current = true;
+            const timestamp = new Date().toISOString();
 
             axios.post(`${API}/logs`, {
                 sessionCode,
                 candidateId,
-                eventType: 'WEBCAM_SNAPSHOT',
-                eventData: base64
-            }, { headers });
+                eventType: 'FOCUS_LOST',
+                eventData: timestamp,
+            }, { headers }).catch(() => {});
 
-            setSnapshotCount(prev => prev + 1);
-        }, 30000);
+            update(ref(db, `alerts/${sessionCode}/${candidateId}`), {
+                tabSwitches: increment(1),
+                lastAlert: timestamp,
+            }).catch(() => {});
 
-        return () => clearInterval(interval);
-    }, [sessionCode, candidateId, call.localVideoRef, token, session?.status]);
+            realtimeSendRef.current?.(MESSAGE_TYPES.FOCUS_LOST, {
+                candidateId,
+                occurredAt: timestamp,
+                count: tabSwitches + 1,
+            });
+
+            setTabSwitches(prev => prev + 1);
+        };
+
+        const handleReturn = () => {
+            if (!isAwayRef.current) return;
+            isAwayRef.current = false;
+            const timestamp = new Date().toISOString();
+
+            realtimeSendRef.current?.(MESSAGE_TYPES.FOCUS_RETURN, {
+                candidateId,
+                occurredAt: timestamp,
+            });
+
+            setFocusWarning('Interview activity detected outside the interview window.');
+            setTimeout(() => setFocusWarning(null), 4000);
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                handleAway();
+            } else {
+                handleReturn();
+            }
+        };
+
+        const handleWindowBlur = () => {
+            handleAway();
+        };
+
+        const handleWindowFocus = () => {
+            handleReturn();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('blur', handleWindowBlur);
+        window.addEventListener('focus', handleWindowFocus);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('blur', handleWindowBlur);
+            window.removeEventListener('focus', handleWindowFocus);
+        };
+    }, [sessionCode, candidateId, tabSwitches, token, session?.status]);
+
+
+
 
     // Monaco sync with Firebase
     const handleEditorMount = (editor) => {
@@ -226,11 +295,15 @@ export default function InterviewPage() {
         }
     };
 
+    const [submitStatus, setSubmitStatus] = useState('idle');
+    const [submitNotification, setSubmitNotification] = useState(null);
+
     // Submit code
     const submitCode = async () => {
-        if (!editorRef) return;
+        if (!editorRef || submitStatus === 'submitting') return;
         const code = editorRef.getValue();
         const headers = { Authorization: `Bearer ${token}` };
+        setSubmitStatus('submitting');
         try {
             await axios.post(`${API}/logs`, {
                 sessionCode,
@@ -238,9 +311,15 @@ export default function InterviewPage() {
                 eventType: 'CODE_SUBMIT',
                 eventData: code
             }, { headers });
-            alert('Code submitted successfully!');
+            setSubmitStatus('success');
+            setSubmitNotification({ type: 'success', message: 'Code submitted successfully!' });
+            setTimeout(() => setSubmitNotification(null), 4000);
+            setTimeout(() => setSubmitStatus('idle'), 3000);
         } catch {
-            alert('Submission failed');
+            setSubmitStatus('error');
+            setSubmitNotification({ type: 'error', message: 'Submission failed. Please try again.' });
+            setTimeout(() => setSubmitNotification(null), 4000);
+            setTimeout(() => setSubmitStatus('idle'), 3000);
         }
     };
     //run code
@@ -360,7 +439,7 @@ export default function InterviewPage() {
 
                             {tabSwitches > 0 && (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber/15 border border-amber/30 text-amber text-[11px] font-semibold animate-pulse">
-                                    ⚠️ {tabSwitches} tab switch{tabSwitches > 1 ? 'es' : ''}
+                                    ⚠️ {tabSwitches} window focus loss{tabSwitches > 1 ? 'es' : ''}
                                 </span>
                             )}
                         </div>
@@ -455,6 +534,48 @@ export default function InterviewPage() {
                     )}
                 </div>
             </div>
+
+            {/* Focus / Tab Return Warning Toast */}
+            {focusWarning && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-amber/20 border border-amber/40 text-amber text-xs font-semibold shadow-xl backdrop-blur-md animate-bounce flex items-center gap-2">
+                    <span>⚠️</span>
+                    <span>{focusWarning}</span>
+                </div>
+            )}
+
+            {/* Submit Code Status Toast */}
+            {submitNotification && (
+                <div className={`absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-xl backdrop-blur-md flex items-center gap-2 animate-fade-in ${
+                    submitNotification.type === 'success'
+                        ? 'bg-mint/20 border-mint/40 text-mint shadow-[0_0_20px_rgba(76,229,232,0.2)]'
+                        : 'bg-red-500/20 border-red-500/40 text-red-300'
+                }`}>
+                    <span>{submitNotification.type === 'success' ? '✓' : '⚠️'}</span>
+                    <span>{submitNotification.message}</span>
+                </div>
+            )}
+
+            {/* Fullscreen Pause Overlay Modal */}
+            {session?.status === 'ACTIVE' && !isFullscreenLocked && (
+                <div className="fixed inset-0 z-50 bg-[#020610]/95 backdrop-blur-lg flex items-center justify-center p-4">
+                    <div className="glass rounded-[24px] p-8 max-w-md w-full text-center border border-amber/40 shadow-[0_0_50px_rgba(245,158,11,0.2)]">
+                        <div className="w-14 h-14 rounded-2xl bg-amber/15 border border-amber/30 text-amber grid place-items-center mx-auto mb-4 text-2xl">
+                            🔒
+                        </div>
+                        <div className="text-amber text-[11px] font-bold uppercase tracking-widest mb-1.5">Interview Paused</div>
+                        <h2 className="font-display font-bold text-xl text-white mb-2">Fullscreen Mode Required</h2>
+                        <p className="text-white/70 text-xs leading-relaxed mb-6">
+                            InterviewShield requires fullscreen mode during the interview session. Please return to fullscreen to resume writing your solution.
+                        </p>
+                        <button
+                            onClick={requestFullscreenMode}
+                            className="button-primary w-full py-2.5 text-xs font-semibold shadow-[0_0_20px_rgba(76,229,232,0.3)]"
+                        >
+                            Re-enter Fullscreen ↗
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -16,8 +16,12 @@ const PRESENCE = 'presence';
 const CODE_SNAPSHOT = 'code_snapshot';
 const CODE_DELTA = 'code_delta';
 const CODE_RESYNC = 'code_resync';
-const TAB_SWITCH = 'tab_switch';
-const TAB_RETURN = 'tab_return';
+
+
+const FULLSCREEN_EXIT = 'fullscreen_exit';
+const FULLSCREEN_RESTORE = 'fullscreen_restore';
+const FOCUS_LOST = 'focus_lost';
+const FOCUS_RETURN = 'focus_return';
 const WEBRTC_OFFER = 'webrtc_offer';
 const WEBRTC_ANSWER = 'webrtc_answer';
 const WEBRTC_ICE_CANDIDATE = 'webrtc_ice_candidate';
@@ -85,7 +89,7 @@ wss.on('connection', (socket) => {
       return;
     }
 
-    if ([CODE_SNAPSHOT, CODE_DELTA, CODE_RESYNC, TAB_SWITCH, TAB_RETURN,
+    if ([CODE_SNAPSHOT, CODE_DELTA, CODE_RESYNC, FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN,
       WEBRTC_OFFER, WEBRTC_ANSWER, WEBRTC_ICE_CANDIDATE].includes(message.type)) {
       relaySessionMessage(socket, message);
       return;
@@ -259,7 +263,7 @@ function relaySessionMessage(socket, message) {
     return;
   }
 
-  if ([TAB_SWITCH, TAB_RETURN].includes(message.type) && socket.context.role !== 'candidate') {
+  if ([FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN].includes(message.type) && socket.context.role !== 'candidate') {
     sendError(socket, 'unauthorized', 'Only the candidate may send tab activity alerts.');
     return;
   }

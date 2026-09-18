@@ -63,12 +63,17 @@ public class ActivityLogService {
             .filter(l -> l.getEventType().equals("TAB_SWITCH"))
             .count();
 
-        long snapshots = logs.stream()
-            .filter(l -> l.getEventType().equals("WEBCAM_SNAPSHOT"))
+        // Risk score formula — remember this for viva
+        long fullscreenExits = logs.stream()
+            .filter(l -> l.getEventType().equals("FULLSCREEN_EXIT"))
             .count();
 
-        // Risk score formula — remember this for viva
-        int riskScore = (int) Math.min(100, (tabSwitches * 15) + (snapshots * 2));
+        long focusLosses = logs.stream()
+            .filter(l -> l.getEventType().equals("FOCUS_LOST"))
+            .count();
+
+        long totalFocusLosses = focusLosses + tabSwitches;
+        int riskScore = (int) Math.min(100, (totalFocusLosses * 15) + (fullscreenExits * 20));
 
         Map<String, Object> report = new HashMap<>();
         report.put("sessionCode", sessionCode);
@@ -118,8 +123,9 @@ public class ActivityLogService {
         report.put("riskLevel", riskLevel);
 
         report.put("totalEvents", logs.size());
-        report.put("tabSwitches", tabSwitches);
-        report.put("snapshots", snapshots);
+        report.put("tabSwitches", totalFocusLosses);
+        report.put("focusLosses", totalFocusLosses);
+        report.put("fullscreenExits", fullscreenExits);
         report.put("riskScore", riskScore);
         report.put("logs", logs);
         return report;

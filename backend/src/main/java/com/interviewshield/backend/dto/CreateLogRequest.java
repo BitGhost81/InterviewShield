@@ -3,8 +3,8 @@ package com.interviewshield.backend.dto;
 public class CreateLogRequest {
     private String sessionCode;
     private Long candidateId;
-    private String eventType;  // TAB_SWITCH or WEBCAM_SNAPSHOT
-    private String eventData;  // timestamp for tab switch, base64 for snapshot
+    private String eventType;  // e.g. FOCUS_LOST, FULLSCREEN_EXIT, CODE_SUBMIT
+    private String eventData;  // event-specific payload (timestamp, code, etc.)
 
     public String getSessionCode() { return sessionCode; }
     public void setSessionCode(String sessionCode) { this.sessionCode = sessionCode; }

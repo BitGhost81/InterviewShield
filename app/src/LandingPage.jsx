@@ -36,7 +36,7 @@ export default function LandingPage() {
       ),
       accent: 'text-cyan bg-cyan/10 border-cyan/20',
       title: 'Webcam Monitoring',
-      desc: 'Periodic snapshots are taken silently during the interview and stored for tamper-evident post-session review.',
+      desc: 'Live peer-to-peer video call runs throughout the interview so the interviewer can see the candidate in real time without any recording or storage.',
     },
     {
       icon: (
@@ -71,7 +71,7 @@ export default function LandingPage() {
       ),
       accent: 'text-violet bg-violet/10 border-violet/20',
       title: 'Full Session Report',
-      desc: 'Complete post-session summary with activity timeline, webcam snapshots, submitted solution, and exportable review.',
+      desc: 'Complete post-session summary with activity timeline, integrity events, AI-generated interview assessment, submitted solution, and exportable review.',
     },
   ];
 

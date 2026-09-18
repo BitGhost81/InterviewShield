@@ -75,13 +75,15 @@ def process_audio_payload(req_data):
                 if "content" in candidates[0]:
                     parts = candidates[0]["content"].get("parts", [])
                     print(f"[INTERVIEW_AI] Number of parts: {len(parts)}")
+                    full_text_parts = []
                     for i, part in enumerate(parts):
                         print(f"[INTERVIEW_AI] part[{i}] keys: {list(part.keys())}")
                         if "text" in part:
-                            text_preview = part["text"][:200].replace("\n", "\\n")
+                            text_val = part["text"]
+                            full_text_parts.append(text_val)
+                            text_preview = text_val[:200].replace("\n", "\\n")
                             print(f"[INTERVIEW_AI] part[{i}].text preview: {text_preview}...")
-                    if parts and "text" in parts[0]:
-                        raw_transcript = parts[0]["text"].strip()
+                    raw_transcript = "\n".join(full_text_parts).strip()
         print(f"[INTERVIEW_AI] Transcription complete: transcript length={len(raw_transcript)}")
     except urllib.error.HTTPError as err:
         err_body = err.read().decode("utf-8", errors="ignore")

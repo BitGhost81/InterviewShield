@@ -150,20 +150,40 @@ export default function MonitorPage() {
                 codeVersionRef.current = version;
             }
 
-            if (message.type === MESSAGE_TYPES.TAB_SWITCH) {
+            if (message.type === MESSAGE_TYPES.FULLSCREEN_EXIT) {
+                const candidateId = String(message.payload?.candidateId || message.senderId || 'candidate');
+                setAlerts((previous) => ({
+                    ...previous,
+                    [candidateId]: {
+                        ...previous[candidateId],
+                        fullscreenExited: true,
+                        lastAlert: message.payload?.occurredAt || new Date().toISOString(),
+                    },
+                }));
+            }
+
+            if (message.type === MESSAGE_TYPES.FULLSCREEN_RESTORE) {
+                const candidateId = String(message.payload?.candidateId || message.senderId || 'candidate');
+                setAlerts((previous) => ({
+                    ...previous,
+                    [candidateId]: { ...previous[candidateId], fullscreenExited: false, lastReturn: message.payload?.occurredAt },
+                }));
+            }
+
+            if (message.type === MESSAGE_TYPES.FOCUS_LOST) {
                 const candidateId = String(message.payload?.candidateId || message.senderId || 'candidate');
                 setAlerts((previous) => ({
                     ...previous,
                     [candidateId]: {
                         ...previous[candidateId],
                         tabSwitches: message.payload?.count || (previous[candidateId]?.tabSwitches || 0) + 1,
-                        lastAlert: message.payload?.occurredAt || new Date().toISOString(),
                         currentlyAway: true,
+                        lastAlert: message.payload?.occurredAt || new Date().toISOString(),
                     },
                 }));
             }
 
-            if (message.type === MESSAGE_TYPES.TAB_RETURN) {
+            if (message.type === MESSAGE_TYPES.FOCUS_RETURN) {
                 const candidateId = String(message.payload?.candidateId || message.senderId || 'candidate');
                 setAlerts((previous) => ({
                     ...previous,
@@ -465,14 +485,14 @@ export default function MonitorPage() {
                                             <div className={`font-display font-bold text-3xl ${activeCandidateStats?.tabSwitches > 3 ? 'text-amber' : 'text-mint'}`}>
                                                 {activeCandidateStats?.tabSwitches || 0}
                                             </div>
-                                            <div className="text-white/40 text-[11px] uppercase tracking-wider">tab switches</div>
+                                            <div className="text-white/40 text-[11px] uppercase tracking-wider">focus losses</div>
                                         </div>
                                     </div>
 
                                     {activeCandidateStats?.tabSwitches > 3 && (
                                         <div className="mb-4 px-3.5 py-2 rounded-xl bg-amber/15 border border-amber/30 text-amber text-xs font-semibold flex items-center gap-2">
                                             <span>⚠️</span>
-                                            <span>Elevated activity detected: multiple tab switches recorded.</span>
+                                            <span>Elevated activity detected: multiple window focus loss events recorded.</span>
                                         </div>
                                     )}
 
@@ -518,13 +538,13 @@ export default function MonitorPage() {
                                                 <div className={`font-display font-bold text-xl ${data.tabSwitches > 3 ? 'text-amber' : 'text-mint'}`}>
                                                     {data.tabSwitches || 0}
                                                 </div>
-                                                <div className="text-white/40 text-[10px] uppercase">tab switches</div>
+                                                <div className="text-white/40 text-[10px] uppercase">focus losses</div>
                                             </div>
                                         </div>
 
                                         {data.currentlyAway && (
                                             <div className="mb-3 px-3 py-1.5 rounded-lg bg-amber/15 border border-amber/25 text-amber text-xs">
-                                                ⚠️ Candidate is currently away from the interview tab
+                                                ⚠️ Candidate window is currently unfocused / away
                                             </div>
                                         )}
 
@@ -636,14 +656,14 @@ export default function MonitorPage() {
                         </div>
 
                         {/* Stats Row */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3.5 mb-8">
                             <div className="glass-subtle rounded-2xl p-4 text-center border border-white/10">
-                                <div className="font-display text-3xl font-bold text-cyan">{report.tabSwitches}</div>
-                                <div className="text-white/50 text-xs mt-1">Tab Switches</div>
+                                <div className="font-display text-3xl font-bold text-yellow-400">{report.focusLosses || report.tabSwitches || 0}</div>
+                                <div className="text-white/50 text-xs mt-1">Focus Losses</div>
                             </div>
                             <div className="glass-subtle rounded-2xl p-4 text-center border border-white/10">
-                                <div className="font-display text-3xl font-bold text-violet">{report.snapshots}</div>
-                                <div className="text-white/50 text-xs mt-1">Snapshots</div>
+                                <div className="font-display text-3xl font-bold text-amber">{report.fullscreenExits || 0}</div>
+                                <div className="text-white/50 text-xs mt-1">Fullscreen Exits</div>
                             </div>
                             <div className="glass-subtle rounded-2xl p-4 text-center border border-white/10">
                                 <div className="font-display text-3xl font-bold text-white">{report.totalEvents}</div>
@@ -658,6 +678,7 @@ export default function MonitorPage() {
                                 </div>
                             </div>
                         </div>
+
 
                         {/* AI Interview Report Section */}
                         <div className="mb-8 p-5 rounded-2xl bg-white/5 border border-white/15">
@@ -752,50 +773,51 @@ export default function MonitorPage() {
                             )}
                         </div>
 
-                        {/* Tab Switch Timeline */}
+                        {/* Integrity & Focus Event Timeline */}
                         <div className="mb-8">
                             <h3 className="font-display font-semibold text-white text-sm uppercase tracking-wider mb-4">
-                                Tab Switch Timeline
+                                Integrity & Focus Event Timeline
                             </h3>
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                            <div className="space-y-2 max-h-56 overflow-y-auto pr-2">
                                 {report.logs
-                                    .filter(l => l.eventType === 'TAB_SWITCH')
-                                    .map((log, i) => (
-                                        <div key={i} className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs">
-                                            <div className="flex items-center gap-2 text-white/80">
-                                                <span className="text-amber">⚠️</span>
-                                                <span>Tab switched away</span>
-                                            </div>
-                                            <span className="text-cyan font-mono font-medium">
-                                                {new Date(log.eventData).toLocaleTimeString()}
-                                            </span>
-                                        </div>
-                                    ))}
-                                {report.logs.filter(l => l.eventType === 'TAB_SWITCH').length === 0 && (
-                                    <div className="text-white/40 text-xs py-2">No tab switches recorded during this session.</div>
-                                )}
-                            </div>
-                        </div>
+                                    .filter(l => ['TAB_SWITCH', 'FULLSCREEN_EXIT', 'FULLSCREEN_RESTORE', 'FOCUS_LOST', 'FOCUS_RETURN'].includes(l.eventType))
+                                    .map((log, i) => {
+                                        let icon = '⚠️';
+                                        let text = 'Interview window lost focus';
+                                        let color = 'text-yellow-400';
 
-                        {/* Webcam Snapshots */}
-                        <div className="mb-8">
-                            <h3 className="font-display font-semibold text-white text-sm uppercase tracking-wider mb-4">
-                                Webcam Snapshots ({report.snapshots})
-                            </h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {report.logs
-                                    .filter(l => l.eventType === 'WEBCAM_SNAPSHOT')
-                                    .map((log, i) => (
-                                        <div key={i} className="rounded-xl overflow-hidden border border-white/15 aspect-video bg-black/50">
-                                            <img
-                                                src={log.eventData}
-                                                alt={`Snapshot ${i + 1}`}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        </div>
-                                    ))}
-                                {report.logs.filter(l => l.eventType === 'WEBCAM_SNAPSHOT').length === 0 && (
-                                    <div className="text-white/40 text-xs col-span-4 py-2">No snapshots recorded yet (captured periodically).</div>
+                                        if (log.eventType === 'FULLSCREEN_EXIT') {
+                                            icon = '🔒';
+                                            text = 'Fullscreen exited';
+                                            color = 'text-amber';
+                                        } else if (log.eventType === 'FULLSCREEN_RESTORE') {
+                                            icon = '✓';
+                                            text = 'Fullscreen restored';
+                                            color = 'text-mint';
+                                        } else if (log.eventType === 'FOCUS_LOST') {
+                                            icon = '⚠️';
+                                            text = 'Interview window lost focus';
+                                            color = 'text-yellow-400';
+                                        } else if (log.eventType === 'FOCUS_RETURN') {
+                                            icon = '✓';
+                                            text = 'Interview window restored';
+                                            color = 'text-mint';
+                                        }
+
+                                        return (
+                                            <div key={i} className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs">
+                                                <div className="flex items-center gap-2 text-white/80">
+                                                    <span className={color}>{icon}</span>
+                                                    <span className="font-medium">{text}</span>
+                                                </div>
+                                                <span className="text-cyan font-mono font-medium">
+                                                    {log.eventData ? (log.eventData.includes('T') ? new Date(log.eventData).toLocaleTimeString() : log.eventData) : 'Recorded'}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                {report.logs.filter(l => ['TAB_SWITCH', 'FULLSCREEN_EXIT', 'FULLSCREEN_RESTORE', 'FOCUS_LOST', 'FOCUS_RETURN'].includes(l.eventType)).length === 0 && (
+                                    <div className="text-white/40 text-xs py-2">No integrity or focus events recorded during this session.</div>
                                 )}
                             </div>
                         </div>
