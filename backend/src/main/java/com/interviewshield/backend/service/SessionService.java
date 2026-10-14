@@ -301,4 +301,74 @@ public class SessionService {
         response.put("sessionCode", code);
         return response;
     }
+
+    @Transactional
+    public Map<String, Object> markParticipantReady(String code, String role, String photoBase64, String email) {
+        Map<String, Object> response = new HashMap<>();
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            response.put("error", "Unauthorized");
+            return response;
+        }
+
+        InterviewSession session = sessionRepository.findBySessionCode(code).orElse(null);
+        if (session == null) {
+            response.put("error", "Session not found");
+            return response;
+        }
+
+        if ("candidate".equalsIgnoreCase(role)) {
+            session.setCandidateReady(true);
+            if (photoBase64 != null && !photoBase64.isBlank()) {
+                session.setCandidatePhoto(photoBase64);
+            }
+        } else if ("interviewer".equalsIgnoreCase(role)) {
+            // Interviewer must own the session
+            if (session.getCreatedBy() == null || !session.getCreatedBy().equals(user.getId())) {
+                response.put("error", "Forbidden");
+                return response;
+            }
+            session.setInterviewerReady(true);
+            if (photoBase64 != null && !photoBase64.isBlank()) {
+                session.setInterviewerPhoto(photoBase64);
+            }
+        } else {
+            response.put("error", "Invalid role");
+            return response;
+        }
+
+        sessionRepository.save(session);
+        response.put("message", "Participant marked ready");
+        response.put("role", role);
+        response.put("candidateReady", session.isCandidateReady());
+        response.put("interviewerReady", session.isInterviewerReady());
+        return response;
+    }
+
+    public Map<String, Object> getReadiness(String code, String email) {
+        Map<String, Object> response = new HashMap<>();
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            response.put("error", "Unauthorized");
+            return response;
+        }
+
+        InterviewSession session = sessionRepository.findBySessionCode(code).orElse(null);
+        if (session == null) {
+            response.put("error", "Session not found");
+            return response;
+        }
+
+        response.put("candidateReady", session.isCandidateReady());
+        response.put("interviewerReady", session.isInterviewerReady());
+
+        // Only expose candidatePhoto to the interviewer who owns the session
+        if ("INTERVIEWER".equalsIgnoreCase(user.getRole())
+                && session.getCreatedBy() != null
+                && session.getCreatedBy().equals(user.getId())) {
+            response.put("candidatePhoto", session.getCandidatePhoto() != null ? session.getCandidatePhoto() : "");
+        }
+
+        return response;
+    }
 }

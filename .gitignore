@@ -1,8 +1,12 @@
-app/*.pemapp/*.pem 
-.env
-
-# Local SSL certificates
 app/*.pem
-
-# Python cache
+# Local environment files — never commit these (use .env.example as the template)
+.env
+.env.local
+.env.*.local
+app/.env
+app/.env.local
+app/.env.development
+app/.env.development.local
+app/.env.production
+app/.env.production.local
 AI/__pycache__/

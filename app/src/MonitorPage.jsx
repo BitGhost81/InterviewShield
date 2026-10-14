@@ -59,6 +59,18 @@ export default function MonitorPage() {
     const headers = React.useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
     const [liveCode, setLiveCode] = useState(null);
     const [candidateCode, setCandidateCode] = useState('');
+    const [candidatePhoto, setCandidatePhoto] = useState('');
+
+    useEffect(() => {
+        if (!sessionCode || !token) return;
+        axios.get(`${API}/sessions/${sessionCode}/readiness`, { headers })
+            .then(res => {
+                if (res.data?.candidatePhoto) {
+                    setCandidatePhoto(res.data.candidatePhoto);
+                }
+            })
+            .catch(() => {});
+    }, [sessionCode, token, headers]);
 
     useEffect(() => {
         if (!sessionCode || !token) return;
@@ -388,7 +400,7 @@ export default function MonitorPage() {
                                     <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </span>
-                            <span className="font-display font-bold text-lg tracking-tight hidden sm:inline">InterviewShield</span>
+                            <span className="font-display font-bold text-lg tracking-tight hidden sm:inline">CodeLock</span>
                         </Link>
 
                         <div className="flex items-center gap-3 text-xs">
@@ -468,9 +480,17 @@ export default function MonitorPage() {
                                 }`}>
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-mint via-cyan to-violet grid place-items-center text-ink font-display font-bold text-xs shadow-md uppercase">
-                                                {getCandidateInitial(activeCandidateId)}
-                                            </div>
+                                            {candidatePhoto ? (
+                                                <img
+                                                    src={`data:image/jpeg;base64,${candidatePhoto}`}
+                                                    alt={activeCandidateName}
+                                                    className="w-10 h-10 rounded-full object-cover border border-mint/40 shadow-md"
+                                                />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-mint via-cyan to-violet grid place-items-center text-ink font-display font-bold text-xs shadow-md uppercase">
+                                                    {getCandidateInitial(activeCandidateId)}
+                                                </div>
+                                            )}
                                             <div>
                                                 <div className="font-display font-semibold text-base text-white">
                                                     {activeCandidateName}

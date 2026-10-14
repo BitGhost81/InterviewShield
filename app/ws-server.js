@@ -200,15 +200,18 @@ function notifyAndCloseSession(sessionCode, code, message) {
   const room = rooms.get(sessionCode);
   if (!room) return;
 
-  for (const peer of [room.candidate, room.interviewer]) {
+  // Retrieve active peers before any teardown
+  const peers = [room.candidate, room.interviewer].filter(Boolean);
+
+  // Send the session_ended notification to all currently connected peers
+  for (const peer of peers) {
     sendError(peer, code, message);
   }
 
-  for (const peer of [room.candidate, room.interviewer]) {
-    if (peer) {
-      removeSocket(peer);
-      closeSocket(peer, 1000, 'Session ended');
-    }
+  // Remove context and close sockets
+  for (const peer of peers) {
+    removeSocket(peer);
+    closeSocket(peer, 1000, 'Session ended');
   }
 
   rooms.delete(sessionCode);
@@ -372,6 +375,7 @@ function verifyToken(token) {
 }
 
 function sendError(socket, code, message) {
+  if (!socket) return;
   send(socket, {
     type: ERROR,
     sessionCode: socket.context?.sessionCode || null,
@@ -387,6 +391,7 @@ function send(socket, message) {
 }
 
 function closeSocket(socket, code, reason) {
+  if (!socket) return;
   if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
     socket.close(code, reason);
   }

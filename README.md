@@ -1,14 +1,14 @@
-# 🛡️ InterviewShield
+# 🔒 CodeLock
 
-**A web platform for conducting secure, monitored technical interviews remotely.**
+**AI-Powered Remote Technical Interview Platform**
 
-InterviewShield is a full-stack web application designed to make remote technical interviews more secure and transparent.
+CodeLock is a full-stack web application designed to make remote technical interviews secure, seamless, and insightful.
 
-Interviewers can create an interview session with a unique code and problem statement. Candidates join the session, solve the problem using a built-in Monaco code editor, and run their code directly in the browser.
+Interviewers can create an interview session with a unique code and problem statement. Candidates join the session, pass a pre-interview device check, solve the problem using a built-in Monaco code editor, and run their code directly in the browser.
 
-While the interview is happening, InterviewShield monitors candidate activity such as tab switching and immediately alerts the interviewer. The interviewer can also see the candidate's code being updated in real time and communicate through a built-in video call.
+While the interview is happening, CodeLock monitors candidate integrity (window focus loss and fullscreen exit events) and immediately alerts the interviewer. The interviewer can also see the candidate's keystrokes in real time via an authoritative code mirror, communicate through peer-to-peer WebRTC video calling, and consult an integrated AI Copilot.
 
-After the interview, the interviewer receives a detailed report containing the candidate's risk score, suspicious activity timeline, and submitted code.
+After the session, CodeLock generates a detailed report containing candidate activity logs, risk scoring, submitted code, and AI-powered speech-to-text transcriptions and assessments.
 
 ---
 
@@ -16,60 +16,56 @@ After the interview, the interviewer receives a detailed report containing the c
 
 - 👤 **Role-based authentication** — Separate Interviewer and Candidate roles
 - 🔑 **Interview sessions** — Create sessions with unique 6-character codes
-- 💻 **Monaco Code Editor** — Professional in-browser coding environment
-- ▶️ **Code execution** — Run JavaScript and view console output
-- 🔄 **Real-time code synchronization** — Interviewer can watch candidate code changes live
-- 🚨 **Tab-switch detection** — Detects and logs candidate tab switching
-- 📢 **Live alerts** — Interviewers receive suspicious-activity alerts instantly
-- 🎥 **Built-in video calling** — Peer-to-peer video communication using WebRTC
-- 📊 **Risk scoring** — Automatically calculates a candidate risk score
-- 📋 **Interview reports** — View complete post-interview activity
-- 💾 **Code export** — Download submitted code
-- 🖨️ **Printable reports** — Generate a printable version of the interview report
+- 🛠️ **Pre-interview device check** — Browser compatibility, camera & mic verification, and session photo capture
+- 💻 **Monaco Code Editor** — Professional in-browser coding environment with syntax highlighting
+- ▶️ **Code execution** — Run JavaScript safely and view console output
+- 🔄 **Real-time code synchronization** — Interviewer watches candidate code changes live
+- 🔒 **Fullscreen & Focus integrity** — Detects fullscreen exits and window focus loss
+- 📢 **Live alerts** — Interviewers receive integrity alerts instantly
+- 🎥 **Built-in video calling** — Peer-to-peer video & audio communication using WebRTC (STUN/TURN ready)
+- 🤖 **AI Copilot & Transcription** — AI assistant for interviewers and automated interview assessment reports
+- 📊 **Risk scoring** — Defensible, automated integrity risk scoring based on activity events
+- 📋 **Comprehensive reports** — View post-interview timeline, AI insights, and final submitted code
 
 ---
 
 ## 🏗️ How It Works
 
 ### 1. Interviewer creates a session
-The interviewer logs in, creates an interview session, and provides a coding problem.
+The interviewer logs in, creates an interview session with a title, and receives a 6-character session code.
 
-### 2. Candidate joins
-The candidate enters the unique session code and joins the interview.
+### 2. Pre-interview setup & device check
+Both the interviewer and candidate pass through a device check before entering the interview:
+- Browser capability verification
+- Camera and microphone access test with live preview and mic meter
+- Session reference photo capture
 
-### 3. Interview begins
-The candidate solves the problem using the built-in code editor while communicating with the interviewer through video.
+### 3. Candidate joins & interview begins
+The candidate enters the session code, completes the device check, and enters the locked interview environment.
 
-### 4. Activity is monitored
-InterviewShield tracks events such as tab switching and sends live alerts to the interviewer.
+### 4. Live synchronization & integrity monitoring
+CodeLock synchronizes code keystrokes in real time, monitors fullscreen and window focus state, and facilitates live WebRTC video communication.
 
-### 5. Interviewer monitors remotely
-The interviewer can simultaneously:
-
-- Watch the candidate's code in real time
-- Receive activity alerts
-- View the candidate's risk score
-- Communicate through video
-
-### 6. Interview report
-After the session, the interviewer receives a report containing the candidate's activity timeline, risk score, and final submitted code.
+### 5. Session report & AI analysis
+After the interview ends, CodeLock generates an integrity report and processes the interview recording with AI speech-to-text and assessment models.
 
 ---
 
 ## 🧩 Project Structure
 
 ```text
-InterviewShield/
+CodeLock/
 │
-├── app/                         # React frontend
-│   ├── src/
-│   ├── public/
+├── app/                         # React + Vite frontend
+│   ├── src/                     # React components, pages, hooks, realtime client
 │   └── package.json
 │
-├── backend/                     # Spring Boot backend
+├── backend/                     # Spring Boot backend (REST API, auth, JPA)
 │   ├── src/
-│   ├── pom.xml
-│   └── ...
+│   └── pom.xml
+│
+├── AI/                          # Python AI processing service (transcription & analysis)
 │
 ├── README.md                    # Project documentation
 └── SETUP.md                     # Installation and setup guide
+```

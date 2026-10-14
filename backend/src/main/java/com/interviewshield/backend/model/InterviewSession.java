@@ -32,7 +32,16 @@ public class InterviewSession {
 
 	@Column(length = 30)
 	private String aiStatus;
-	
+
+	private boolean candidateReady = false;
+	private boolean interviewerReady = false;
+
+	@Column(columnDefinition = "LONGTEXT")
+	private String candidatePhoto;
+
+	@Column(columnDefinition = "LONGTEXT")
+	private String interviewerPhoto;
+
 	private LocalDateTime createdAt;
 	
 	@PrePersist
@@ -123,5 +132,37 @@ public class InterviewSession {
 	public void setCreatedAt(LocalDateTime createdAt) {
 		this.createdAt = createdAt;
 	}
-	
+
+	public boolean isCandidateReady() {
+		return candidateReady;
+	}
+
+	public void setCandidateReady(boolean candidateReady) {
+		this.candidateReady = candidateReady;
+	}
+
+	public boolean isInterviewerReady() {
+		return interviewerReady;
+	}
+
+	public void setInterviewerReady(boolean interviewerReady) {
+		this.interviewerReady = interviewerReady;
+	}
+
+	public String getCandidatePhoto() {
+		return candidatePhoto;
+	}
+
+	public void setCandidatePhoto(String candidatePhoto) {
+		this.candidatePhoto = candidatePhoto;
+	}
+
+	public String getInterviewerPhoto() {
+		return interviewerPhoto;
+	}
+
+	public void setInterviewerPhoto(String interviewerPhoto) {
+		this.interviewerPhoto = interviewerPhoto;
+	}
+
 }

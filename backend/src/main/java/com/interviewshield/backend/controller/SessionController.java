@@ -212,4 +212,42 @@ public class SessionController {
         }
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/{code}/ready")
+    public ResponseEntity<Map<String, Object>> markReady(
+            @PathVariable String code,
+            @RequestBody Map<String, String> body,
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        String role = body.getOrDefault("role", "");
+        String photoBase64 = body.getOrDefault("photoBase64", "");
+        Map<String, Object> response = sessionService.markParticipantReady(code, role, photoBase64, authentication.getName());
+        if (response.containsKey("error")) {
+            String err = (String) response.get("error");
+            if ("Unauthorized".equals(err)) return ResponseEntity.status(401).body(response);
+            if ("Forbidden".equals(err)) return ResponseEntity.status(403).body(response);
+            if ("Session not found".equals(err)) return ResponseEntity.status(404).body(response);
+            return ResponseEntity.status(400).body(response);
+        }
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{code}/readiness")
+    public ResponseEntity<Map<String, Object>> getReadiness(
+            @PathVariable String code,
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        Map<String, Object> response = sessionService.getReadiness(code, authentication.getName());
+        if (response.containsKey("error")) {
+            String err = (String) response.get("error");
+            if ("Unauthorized".equals(err)) return ResponseEntity.status(401).body(response);
+            if ("Session not found".equals(err)) return ResponseEntity.status(404).body(response);
+            return ResponseEntity.status(400).body(response);
+        }
+        return ResponseEntity.ok(response);
+    }
 }

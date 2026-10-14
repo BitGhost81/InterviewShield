@@ -24,8 +24,8 @@ export default function LandingPage() {
         </svg>
       ),
       accent: 'text-violet bg-violet/10 border-violet/20',
-      title: 'Tab Switch Detection',
-      desc: 'Every time a candidate leaves the interview tab, it is logged with an exact timestamp, duration, and flagged instantly.',
+      title: 'Focus & Fullscreen Integrity',
+      desc: 'Monitors candidate focus in real time. Fullscreen exits and focus loss events are logged with exact timestamps, durations, and flagged instantly.',
     },
     {
       icon: (
@@ -122,7 +122,7 @@ export default function LandingPage() {
                 <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
-            <span className="font-display font-bold text-xl tracking-tight">InterviewShield</span>
+            <span className="font-display font-bold text-xl tracking-tight">CodeLock</span>
           </div>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-white/75">
@@ -143,7 +143,7 @@ export default function LandingPage() {
       <section className="relative z-10 max-w-[960px] mx-auto px-6 pt-20 pb-20 text-center">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-mint/10 border border-mint/25 text-mint text-xs font-semibold tracking-wider uppercase mb-8 shadow-[0_0_15px_rgba(76,229,232,0.15)]">
           <span className="w-2 h-2 rounded-full bg-mint shadow-[0_0_8px_#4ce5e8]" />
-          Trusted Interview Integrity Platform
+          AI-Powered Remote Technical Interview Platform
         </div>
 
         <h1 className="font-display font-bold text-5xl sm:text-6xl md:text-7xl leading-[1.08] tracking-tight mb-6">
@@ -155,8 +155,8 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-base sm:text-lg text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
-          InterviewShield combines a real-time collaborative code editor with intelligent proctoring,
-          live video calling, tab-switch tracking, and automated risk scoring in one unified platform.
+          CodeLock combines a real-time collaborative code editor with intelligent proctoring,
+          live video calling, focus monitoring, and automated risk scoring in one unified platform.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-4">
@@ -213,7 +213,7 @@ export default function LandingPage() {
         <div className="text-center max-w-xl mx-auto mb-14">
           <div className="text-mint text-xs font-bold uppercase tracking-widest mb-3">Simple Workflow</div>
           <h2 className="font-display font-bold text-3xl sm:text-4xl tracking-tight mb-4">
-            How InterviewShield Works
+            How CodeLock Works
           </h2>
           <p className="text-white/70 text-sm sm:text-base">
             Designed for frictionless setup for candidates and maximum signal for interviewers.
@@ -268,11 +268,11 @@ export default function LandingPage() {
               <path d="M10 1 18.5 4.7v5.7c0 4.7-3.6 8.6-8.5 10C5.1 19 1.5 15.1 1.5 10.4V4.7L10 1Z" stroke="#071014" strokeWidth="2" />
             </svg>
           </span>
-          <span className="font-display font-semibold text-white/80">InterviewShield</span>
+          <span className="font-display font-semibold text-white/80">CodeLock</span>
           <span>— Built for high-integrity hiring.</span>
         </div>
         <div>
-          © {new Date().getFullYear()} InterviewShield · CSE 2026
+          © {new Date().getFullYear()} CodeLock · CSE 2026
         </div>
       </footer>
     </div>

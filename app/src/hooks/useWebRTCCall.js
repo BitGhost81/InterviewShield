@@ -1,7 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MESSAGE_TYPES } from '../realtime/messages';
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+function getIceServers() {
+    const servers = [];
+    const stunUrl = import.meta.env.VITE_STUN_URL || 'stun:stun.l.google.com:19302';
+    servers.push({ urls: stunUrl });
+
+    const turnUrl = import.meta.env.VITE_TURN_URL;
+    if (turnUrl) {
+        servers.push({
+            urls: turnUrl,
+            username: import.meta.env.VITE_TURN_USERNAME || '',
+            credential: import.meta.env.VITE_TURN_CREDENTIAL || '',
+        });
+    }
+    return servers;
+}
 
 export function useWebRTCCall({ isInitiator, peerConnected, sendSignal }) {
     const localVideoRef = useRef(null);
@@ -53,7 +67,7 @@ export function useWebRTCCall({ isInitiator, peerConnected, sendSignal }) {
         if (existing && existing.connectionState !== 'closed') return existing;
 
         const stream = await getLocalStream();
-        const peer = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        const peer = new RTCPeerConnection({ iceServers: getIceServers() });
         peerConnectionRef.current = peer;
         stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 

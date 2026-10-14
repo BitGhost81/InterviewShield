@@ -390,7 +390,7 @@ export default function InterviewPage() {
         return (
             <div className="min-h-screen text-white relative flex items-center justify-center px-4">
                 <div className="glass rounded-[24px] p-8 max-w-md w-full text-center border border-white/15">
-                    <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-2">InterviewShield</div>
+                    <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-2">CodeLock</div>
                     <h1 className="font-display font-bold text-2xl mb-3">Loading Session</h1>
                     <p className="text-white/65 text-sm">Checking whether this interview is active...</p>
                 </div>
@@ -402,7 +402,7 @@ export default function InterviewPage() {
         return (
             <div className="min-h-screen text-white relative flex items-center justify-center px-4">
                 <div className="glass rounded-[24px] p-8 max-w-md w-full text-center border border-white/15">
-                    <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-2">InterviewShield</div>
+                    <div className="text-mint text-[11px] font-bold uppercase tracking-widest mb-2">CodeLock</div>
                     <h1 className="font-display font-bold text-2xl mb-3">Session Unavailable</h1>
                     <p className="text-white/65 text-sm mb-6">{sessionError}</p>
                     <Link to="/dashboard" className="button-primary inline-flex px-5 py-2 text-xs font-semibold">
@@ -426,7 +426,7 @@ export default function InterviewPage() {
                                     <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </span>
-                            <span className="font-display font-bold text-base tracking-tight hidden sm:inline">InterviewShield</span>
+                            <span className="font-display font-bold text-base tracking-tight hidden sm:inline">CodeLock</span>
                         </Link>
 
                         <div className="flex items-center gap-3 text-xs">
@@ -565,7 +565,7 @@ export default function InterviewPage() {
                         <div className="text-amber text-[11px] font-bold uppercase tracking-widest mb-1.5">Interview Paused</div>
                         <h2 className="font-display font-bold text-xl text-white mb-2">Fullscreen Mode Required</h2>
                         <p className="text-white/70 text-xs leading-relaxed mb-6">
-                            InterviewShield requires fullscreen mode during the interview session. Please return to fullscreen to resume writing your solution.
+                            CodeLock requires fullscreen mode during the interview session. Please return to fullscreen to resume writing your solution.
                         </p>
                         <button
                             onClick={requestFullscreenMode}

@@ -113,7 +113,7 @@ export default function Dashboard() {
                 <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
-            <span className="font-display font-bold text-lg tracking-tight">InterviewShield</span>
+            <span className="font-display font-bold text-lg tracking-tight">CodeLock</span>
           </Link>
 
           <div className="flex items-center gap-3.5">
@@ -295,11 +295,6 @@ function CandidateDashboardView({ userName, initials, logout, navigate }) {
     const code = sessionCode.trim().toUpperCase();
     if (!code || !token) return;
 
-    // Synchronously request browser fullscreen within the user gesture context
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-
     setJoining(true);
     setError('');
 
@@ -310,13 +305,11 @@ function CandidateDashboardView({ userName, initials, logout, navigate }) {
       });
 
       if (!res.data || res.data.error) {
-        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         setError(res.data?.error || 'Session not found.');
         return;
       }
 
       if (res.data.status && res.data.status !== 'ACTIVE') {
-        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         setError(`This interview session is ${res.data.status.toLowerCase()} and can no longer be joined.`);
         return;
       }
@@ -335,7 +328,6 @@ function CandidateDashboardView({ userName, initials, logout, navigate }) {
       );
       navigate(`/interview/${code}`);
     } catch (err) {
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       if (err?.code === 'session_occupied') {
         setError('Session already has a candidate.');
       } else if (err.response?.status === 404) {
@@ -362,7 +354,7 @@ function CandidateDashboardView({ userName, initials, logout, navigate }) {
                 <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
-            <span className="font-display font-bold text-lg tracking-tight">InterviewShield</span>
+            <span className="font-display font-bold text-lg tracking-tight">CodeLock</span>
           </Link>
 
           <div className="flex items-center gap-3.5">

@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import time
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -60,38 +61,57 @@ def process_audio_payload(req_data):
 
     headers = {"Content-Type": "application/json"}
     raw_transcript = ""
+    max_attempts = 3
+    base_delay = 2.0
 
-    try:
-        print(f"[INTERVIEW_AI] Step 1: Sending transcription request to {transcribe_model}...")
-        req = urllib.request.Request(transcribe_url, data=transcribe_payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            raw_response = resp.read().decode("utf-8")
-            res_data = json.loads(raw_response)
-            # Log raw response structure for diagnosis (truncate large text fields)
-            print(f"[INTERVIEW_AI] Raw response keys: {list(res_data.keys())}")
-            candidates = res_data.get("candidates", [])
-            if candidates:
-                print(f"[INTERVIEW_AI] candidates[0] keys: {list(candidates[0].keys())}")
-                if "content" in candidates[0]:
-                    parts = candidates[0]["content"].get("parts", [])
-                    print(f"[INTERVIEW_AI] Number of parts: {len(parts)}")
-                    full_text_parts = []
-                    for i, part in enumerate(parts):
-                        print(f"[INTERVIEW_AI] part[{i}] keys: {list(part.keys())}")
-                        if "text" in part:
-                            text_val = part["text"]
-                            full_text_parts.append(text_val)
-                            text_preview = text_val[:200].replace("\n", "\\n")
-                            print(f"[INTERVIEW_AI] part[{i}].text preview: {text_preview}...")
-                    raw_transcript = "\n".join(full_text_parts).strip()
-        print(f"[INTERVIEW_AI] Transcription complete: transcript length={len(raw_transcript)}")
-    except urllib.error.HTTPError as err:
-        err_body = err.read().decode("utf-8", errors="ignore")
-        print(f"[INTERVIEW_AI] ERROR: {transcribe_model} HTTP Error {err.code}: {err_body}")
-        return 502, {"error": f"Transcription model gemini-3.5-transcribe failed with HTTP {err.code}"}
-    except Exception as exc:
-        print(f"[INTERVIEW_AI] ERROR: {transcribe_model} request failed: {exc}")
-        return 502, {"error": f"Transcription failed: {exc}"}
+    for attempt in range(1, max_attempts + 1):
+        try:
+            print(f"[INTERVIEW_AI] Step 1: Sending transcription request to {transcribe_model} (attempt {attempt}/{max_attempts})...")
+            req = urllib.request.Request(transcribe_url, data=transcribe_payload, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                raw_response = resp.read().decode("utf-8")
+                res_data = json.loads(raw_response)
+                # Log raw response structure for diagnosis (truncate large text fields)
+                print(f"[INTERVIEW_AI] Raw response keys: {list(res_data.keys())}")
+                candidates = res_data.get("candidates", [])
+                if candidates:
+                    print(f"[INTERVIEW_AI] candidates[0] keys: {list(candidates[0].keys())}")
+                    if "content" in candidates[0]:
+                        parts = candidates[0]["content"].get("parts", [])
+                        print(f"[INTERVIEW_AI] Number of parts: {len(parts)}")
+                        full_text_parts = []
+                        for i, part in enumerate(parts):
+                            print(f"[INTERVIEW_AI] part[{i}] keys: {list(part.keys())}")
+                            if "text" in part:
+                                text_val = part["text"]
+                                full_text_parts.append(text_val)
+                                text_preview = text_val[:200].replace("\n", "\\n")
+                                print(f"[INTERVIEW_AI] part[{i}].text preview: {text_preview}...")
+                        raw_transcript = "\n".join(full_text_parts).strip()
+            print(f"[INTERVIEW_AI] Transcription complete: transcript length={len(raw_transcript)}")
+            break
+        except urllib.error.HTTPError as err:
+            err_body = err.read().decode("utf-8", errors="ignore")
+            print(f"[INTERVIEW_AI] ERROR: {transcribe_model} HTTP Error {err.code} on attempt {attempt}/{max_attempts}: {err_body}")
+
+            # Only retry transient errors (429 rate limit or 5xx server errors)
+            is_transient = err.code == 429 or 500 <= err.code <= 599
+            if is_transient and attempt < max_attempts:
+                retry_after_header = err.headers.get("Retry-After") if err.headers else None
+                sleep_seconds = base_delay * (2 ** (attempt - 1))
+                if retry_after_header:
+                    try:
+                        sleep_seconds = max(float(retry_after_header), 1.0)
+                    except (ValueError, TypeError):
+                        pass
+                print(f"[INTERVIEW_AI] Transient error HTTP {err.code}. Retrying in {sleep_seconds:.1f}s (attempt {attempt + 1}/{max_attempts})...")
+                time.sleep(sleep_seconds)
+                continue
+
+            return 502, {"error": f"Transcription model gemini-3.5-transcribe failed with HTTP {err.code}"}
+        except Exception as exc:
+            print(f"[INTERVIEW_AI] ERROR: {transcribe_model} request failed on attempt {attempt}/{max_attempts}: {exc}")
+            return 502, {"error": f"Transcription failed: {exc}"}
 
     if not raw_transcript:
         print("[INTERVIEW_AI] ERROR: Empty transcript returned from Gemini")

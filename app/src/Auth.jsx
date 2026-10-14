@@ -53,7 +53,7 @@ export default function Auth() {
               <path d="m5.7 10.6 2.7 2.7 5.8-6" stroke="#071014" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
-          <span className="font-display font-bold text-xl tracking-tight">InterviewShield</span>
+          <span className="font-display font-bold text-xl tracking-tight">CodeLock</span>
         </Link>
       </nav>
 
@@ -68,7 +68,7 @@ export default function Auth() {
             <p className="text-white/60 text-xs sm:text-sm">
               {isLogin
                 ? 'Sign in to access your interview workspace'
-                : 'Join InterviewShield for verified technical screens'}
+                : 'Join CodeLock for verified technical screens'}
             </p>
           </div>
 
@@ -218,7 +218,7 @@ export default function Auth() {
 
       {/* Footer note */}
       <footer className="text-center p-6 text-white/40 text-xs relative z-10">
-        InterviewShield — Verified sessions · End-to-end integrity
+        CodeLock — Verified sessions · End-to-end integrity
       </footer>
     </div>
   );
