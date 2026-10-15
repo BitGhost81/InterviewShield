@@ -27,8 +27,8 @@ public class ActivityLogController {
     private SessionRepository sessionRepository;
 
     @PostMapping
-    public ResponseEntity<Map<String, Object>> saveLog(@RequestBody CreateLogRequest request) {
-        Map<String, Object> response = activityLogService.saveLog(request);
+    public ResponseEntity<Map<String, Object>> saveLog(@RequestBody CreateLogRequest request, Authentication authentication) {
+        Map<String, Object> response = activityLogService.saveLog(request, authentication == null ? null : authentication.getName());
         return ResponseEntity.ok(response);
     }
 
@@ -59,6 +59,10 @@ public class ActivityLogController {
             return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
         }
 
+        if (!candidateId.equals(session.getCandidateId())
+                && activityLogService.getLogsBySessionAndCandidate(sessionCode, candidateId).isEmpty()) {
+            return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
+        }
         Map<String, Object> report = activityLogService.getReport(sessionCode, candidateId);
         return ResponseEntity.ok(report);
     }

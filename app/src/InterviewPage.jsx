@@ -143,7 +143,6 @@ export default function InterviewPage() {
 
                 axios.post(`${API}/logs`, {
                     sessionCode,
-                    candidateId,
                     eventType: 'FULLSCREEN_EXIT',
                     eventData: timestamp,
                 }, { headers }).catch(() => {});
@@ -159,7 +158,6 @@ export default function InterviewPage() {
 
                 axios.post(`${API}/logs`, {
                     sessionCode,
-                    candidateId,
                     eventType: 'FULLSCREEN_RESTORE',
                     eventData: timestamp,
                 }, { headers }).catch(() => {});
@@ -187,7 +185,6 @@ export default function InterviewPage() {
 
             axios.post(`${API}/logs`, {
                 sessionCode,
-                candidateId,
                 eventType: 'FOCUS_LOST',
                 eventData: timestamp,
             }, { headers }).catch(() => {});
@@ -307,7 +304,6 @@ export default function InterviewPage() {
         try {
             await axios.post(`${API}/logs`, {
                 sessionCode,
-                candidateId,
                 eventType: 'CODE_SUBMIT',
                 eventData: code
             }, { headers });

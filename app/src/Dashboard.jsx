@@ -13,7 +13,6 @@ export default function Dashboard() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionError, setActionError] = useState('');
   const [deletingCode, setDeletingCode] = useState(null);
-  const userId = localStorage.getItem('userId');
   const userName = localStorage.getItem('userName');
   const userRole = localStorage.getItem('userRole');
   const token = localStorage.getItem('token');
@@ -64,8 +63,7 @@ export default function Dashboard() {
     try {
       const res = await axios.post(`${API}/sessions`, {
         title: cleanTitle,
-        problemStatement: '',
-        createdBy: parseInt(userId)
+        problemStatement: ''
       }, { headers });
 
       const newSession = res.data;

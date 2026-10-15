@@ -7,7 +7,10 @@ import { WebSocketServer, WebSocket } from 'ws';
 
 const PORT = Number(process.env.REALTIME_PORT || 1234);
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8081/api';
-const JWT_SECRET = process.env.JWT_SECRET || 'interviewshield-secret-key-2026-very-long-string';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || !JWT_SECRET.trim() || Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
+  throw new Error('JWT_SECRET must contain at least 32 UTF-8 bytes');
+}
 
 const ROLES = new Set(['candidate', 'interviewer']);
 const JOIN_SESSION = 'join_session';
@@ -78,7 +81,16 @@ wss.on('connection', (socket) => {
     }
 
     if (message.type === JOIN_SESSION) {
-      await handleJoin(socket, message);
+      if (socket.joining) {
+        sendError(socket, 'already_joined', 'Session join is already in progress.');
+        return;
+      }
+      socket.joining = true;
+      try {
+        await handleJoin(socket, message);
+      } finally {
+        socket.joining = false;
+      }
       return;
     }
 
@@ -152,11 +164,17 @@ async function handleJoin(socket, message) {
     return;
   }
 
-  const sessionExists = await verifySessionExists(sessionCode, token);
-  if (!sessionExists) {
-    sendError(socket, 'invalid_session', 'Session could not be verified.');
+  const participant = await validateParticipant(sessionCode, token);
+  if (!participant.valid) {
+    sendError(socket, participant.code, participant.message);
     return;
   }
+  if (normalizeRole(participant.role) !== requestedRole) {
+    sendError(socket, 'unauthorized', 'Authenticated participant role does not match requested role.');
+    return;
+  }
+  // The browser may close its probe while backend validation is pending.
+  if (socket.readyState !== WebSocket.OPEN) return;
 
   const room = getRoom(sessionCode);
   const existingSocket = room[requestedRole];
@@ -171,7 +189,7 @@ async function handleJoin(socket, message) {
     sessionCode,
     role: requestedRole,
     email: auth.email,
-    senderId: message.senderId ? String(message.senderId) : null,
+    senderId: String(participant.id),
     token,
   };
 
@@ -301,21 +319,36 @@ function relaySessionMessage(socket, message) {
     sessionCode: socket.context.sessionCode,
     senderRole: socket.context.role,
     senderId: socket.context.senderId,
-    payload: message.payload || {},
+    payload: socket.context.role === 'candidate'
+      && [FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN].includes(message.type)
+      ? { ...(message.payload || {}), candidateId: socket.context.senderId }
+      : (message.payload || {}),
   });
 }
 
-async function verifySessionExists(sessionCode, token) {
+async function validateParticipant(sessionCode, token) {
   try {
-    const response = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionCode)}`, {
+    const response = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionCode)}/participation`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (!response.ok) return false;
-    const session = await response.json();
-    return session.status === 'ACTIVE';
+    if (!response.ok) {
+      return {
+        valid: false,
+        code: response.status === 409 ? 'session_occupied' : (response.status === 403 || response.status === 401 ? 'unauthorized' : 'invalid_session'),
+        message: 'Session participation could not be authorized.',
+      };
+    }
+    const participant = await response.json();
+    return {
+      ...participant,
+      valid: participant.status === 'ACTIVE' && participant.id != null && ROLES.has(normalizeRole(participant.role)),
+      code: 'invalid_session',
+      message: 'Session participation could not be verified.',
+    };
   } catch {
-    return false;
+    return { valid: false, code: 'invalid_session', message: 'Session could not be verified.' };
   }
 }
 
@@ -354,16 +387,19 @@ function verifyToken(token) {
 
   let claims;
   try {
+    if (JSON.parse(base64UrlDecode(header)).alg !== 'HS256') {
+      return { valid: false, reason: 'JWT algorithm must be HS256.' };
+    }
     claims = JSON.parse(base64UrlDecode(payload));
   } catch {
     return { valid: false, reason: 'JWT token payload is invalid.' };
   }
 
-  if (!claims.sub || !claims.role) {
+  if (!claims || typeof claims.sub !== 'string' || !claims.sub || typeof claims.role !== 'string' || !claims.role) {
     return { valid: false, reason: 'JWT token is missing required claims.' };
   }
 
-  if (claims.exp && Date.now() >= claims.exp * 1000) {
+  if (!Number.isFinite(claims.exp) || Date.now() >= claims.exp * 1000) {
     return { valid: false, reason: 'JWT token has expired.' };
   }
 

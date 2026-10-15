@@ -48,6 +48,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/sessions/*/end").hasRole("INTERVIEWER")
                 .requestMatchers(HttpMethod.DELETE, "/api/sessions/*").hasRole("INTERVIEWER")
                 .requestMatchers(HttpMethod.GET, "/api/logs/**").hasRole("INTERVIEWER")
+                .requestMatchers(HttpMethod.POST, "/api/logs").hasRole("CANDIDATE")
+                .requestMatchers(HttpMethod.POST, "/api/sessions/*/process-audio").hasRole("INTERVIEWER")
                 .requestMatchers("/api/ai/**").hasRole("INTERVIEWER")
                 .anyRequest().authenticated()
             )

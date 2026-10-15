@@ -36,6 +36,9 @@ public class SessionService {
     @Autowired
     private ActivityLogRepository activityLogRepository;
 
+    @Autowired
+    private SessionAuthorizationService authorization;
+
     private String generateSessionCode() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         Random random = new Random();
@@ -162,7 +165,14 @@ public class SessionService {
             return response;
         }
 
-        User user = (email != null && !email.isBlank()) ? userRepository.findByEmail(email).orElse(null) : null;
+        User user = authorization.requireUser(email);
+        if (!"INTERVIEWER".equalsIgnoreCase(user.getRole()) && !"CANDIDATE".equalsIgnoreCase(user.getRole())) {
+            return Map.of("error", "Forbidden");
+        }
+        if ("CANDIDATE".equalsIgnoreCase(user.getRole()) && session.getCandidateId() != null
+                && !user.getId().equals(session.getCandidateId())) {
+            return Map.of("error", "Forbidden");
+        }
         if (user != null && "INTERVIEWER".equalsIgnoreCase(user.getRole())) {
             // An interviewer requesting session details must own the session
             if (session.getCreatedBy() == null || !session.getCreatedBy().equals(user.getId())) {
@@ -196,6 +206,7 @@ public class SessionService {
     }
 
     public Map<String, Object> getAiReport(String code, String email) {
+        authorization.requireOwner(code, email);
         Map<String, Object> response = new HashMap<>();
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
@@ -235,6 +246,7 @@ public class SessionService {
     }
 
     public Map<String, Object> endSession(String code, String email) {
+        authorization.requireOwner(code, email);
         Map<String, Object> response = new HashMap<>();
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
@@ -271,6 +283,7 @@ public class SessionService {
 
     @Transactional
     public Map<String, Object> deleteSession(String code, String email) {
+        authorization.requireOwner(code, email);
         Map<String, Object> response = new HashMap<>();
 
         User user = userRepository.findByEmail(email).orElse(null);
@@ -304,6 +317,12 @@ public class SessionService {
 
     @Transactional
     public Map<String, Object> markParticipantReady(String code, String role, String photoBase64, String email) {
+        if ("candidate".equalsIgnoreCase(role)) {
+            authorization.requireCandidate(code, email);
+        } else if ("interviewer".equalsIgnoreCase(role)) {
+            authorization.requireOwner(code, email);
+            authorization.requireActiveParticipant(code, email);
+        }
         Map<String, Object> response = new HashMap<>();
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
@@ -346,6 +365,7 @@ public class SessionService {
     }
 
     public Map<String, Object> getReadiness(String code, String email) {
+        authorization.requireParticipant(code, email);
         Map<String, Object> response = new HashMap<>();
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {

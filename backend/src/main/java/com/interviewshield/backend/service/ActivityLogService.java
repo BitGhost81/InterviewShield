@@ -29,10 +29,14 @@ public class ActivityLogService {
     @Autowired
     private SessionRepository sessionRepository;
 
-    public Map<String, Object> saveLog(CreateLogRequest request) {
+    @Autowired
+    private SessionAuthorizationService authorization;
+
+    public Map<String, Object> saveLog(CreateLogRequest request, String email) {
+        authorization.requireCandidate(request.getSessionCode(), email);
         ActivityLog log = new ActivityLog();
         log.setSessionCode(request.getSessionCode());
-        log.setCandidateId(request.getCandidateId());
+        log.setCandidateId(authorization.requireUser(email).getId());
         log.setEventType(request.getEventType());
         log.setEventData(request.getEventData());
 

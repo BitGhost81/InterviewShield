@@ -2,6 +2,8 @@ package com.interviewshield.backend.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.interviewshield.backend.service.SessionAuthorizationService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -26,6 +28,9 @@ public class AiCopilotController {
     @Value("${ai.base-url:http://127.0.0.1:8000}")
     private String aiBaseUrl;
 
+    @Autowired
+    private SessionAuthorizationService authorization;
+
     public AiCopilotController(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
@@ -38,6 +43,12 @@ public class AiCopilotController {
         if (authentication == null || authentication.getName() == null) {
             return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
         }
+
+        Object contextValue = request.get("context");
+        if (!(contextValue instanceof Map<?, ?> context) || !(context.get("session_id") instanceof String code) || code.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Session context is required"));
+        }
+        authorization.requireOwner(code, authentication.getName());
 
         try {
             String body = objectMapper.writeValueAsString(request);

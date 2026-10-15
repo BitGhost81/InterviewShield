@@ -3,6 +3,7 @@ import java.util.HashMap;
 
 import com.interviewshield.backend.dto.CreateSessionRequest;
 import com.interviewshield.backend.service.SessionService;
+import com.interviewshield.backend.service.SessionAuthorizationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,14 @@ public class SessionController {
 
     @Autowired
     private SessionService sessionService;
+
+    @Autowired
+    private SessionAuthorizationService authorization;
+
+    @PostMapping("/{code}/participation")
+    public ResponseEntity<Map<String, Object>> joinSession(@PathVariable String code, Authentication authentication) {
+        return ResponseEntity.ok(authorization.join(code, authentication == null ? null : authentication.getName()));
+    }
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> createSession(@RequestBody CreateSessionRequest request, Authentication authentication) {
@@ -105,6 +114,8 @@ public class SessionController {
             System.out.println("[AI] process-audio REJECTED: Unauthorized");
             return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
         }
+        // Ownership is required, but ACTIVE is not: final uploads may arrive after /end.
+        authorization.requireOwner(code, authentication.getName());
         Map<String, Object> session = sessionService.getSessionByCode(code, authentication.getName());
         if (session.containsKey("error")) {
             String err = (String) session.get("error");

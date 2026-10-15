@@ -21,6 +21,16 @@ public class InterviewSession {
 	private String problemStatement;
 	
 	private Long createdBy;
+
+	private Long candidateId;
+
+	// Prevent concurrent readiness/AI updates from overwriting participant assignment.
+	@Version
+	@Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+	private long version;
+
+	public Long getCandidateId() { return candidateId; }
+	public void setCandidateId(Long candidateId) { this.candidateId = candidateId; }
 	
 	private String status;
 	

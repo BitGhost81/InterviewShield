@@ -27,6 +27,10 @@ public class AuthService {
 	
 	public Map<String, Object> register(RegisterRequest request){
 		Map<String, Object> response = new HashMap<>();
+		if (!"CANDIDATE".equals(request.getRole()) && !"INTERVIEWER".equals(request.getRole())) {
+			response.put("Error", "Invalid role");
+			return response;
+		}
 		
 		if(userRepository.existsByEmail(request.getEmail())) {
 			response.put("Error", "Email already exists");

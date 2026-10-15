@@ -3,6 +3,8 @@ package com.interviewshield.backend.security;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
+import java.nio.charset.StandardCharsets;
 
 import java.security.Key;
 import java.util.Date;
@@ -10,11 +12,18 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    private final String SECRET = "interviewshield-secret-key-2026-very-long-string";
+    private final Key signingKey;
+
+    public JwtUtil(@Value("${JWT_SECRET}") String secret) {
+        if (secret == null || secret.isBlank() || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalArgumentException("JWT_SECRET must contain at least 32 UTF-8 bytes");
+        }
+        signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
     private final long EXPIRATION = 86400000; // 24 hours in milliseconds
 
     private Key getSigningKey() {
-        return Keys.hmacShaKeyFor(SECRET.getBytes());
+        return signingKey;
     }
 
     public String generateToken(String email, String role) {
@@ -52,7 +61,7 @@ public class JwtUtil {
                 .build()
                 .parseClaimsJws(token);
             return true;
-        } catch (JwtException e) {
+        } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }

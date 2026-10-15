@@ -3,7 +3,6 @@ import { MESSAGE_TYPES, REALTIME_URL } from './messages';
 export function createRealtimeClient({
     sessionCode,
     role,
-    userId,
     token,
     onMessage,
     onStatusChange,
@@ -38,7 +37,6 @@ export function createRealtimeClient({
             type,
             sessionCode,
             senderRole,
-            senderId: userId ? String(userId) : null,
             payload,
         }));
 
@@ -59,7 +57,6 @@ export function createRealtimeClient({
                 type: MESSAGE_TYPES.JOIN_SESSION,
                 sessionCode,
                 senderRole,
-                senderId: userId ? String(userId) : null,
                 payload: { token },
             }));
         });
@@ -122,7 +119,6 @@ export function createRealtimeClient({
 export function probeRealtimeJoin({
     sessionCode,
     role,
-    userId,
     token,
     timeoutMs = 8000,
 }) {
@@ -164,7 +160,6 @@ export function probeRealtimeJoin({
                 type: MESSAGE_TYPES.JOIN_SESSION,
                 sessionCode,
                 senderRole,
-                senderId: userId ? String(userId) : null,
                 payload: { token },
             }));
         });
