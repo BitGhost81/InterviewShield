@@ -44,6 +44,13 @@ export default function InterviewPage() {
     const pendingFocusRef = useRef(0);
     const flushFocusRef = useRef(null);
     const focusWarningTimerRef = useRef(null);
+    const lastLogIdRef = useRef(null);
+    const publishSavedRef = useRef(null);
+    const notifyActivitySaved = useCallback(response => {
+        lastLogIdRef.current = response.data.id;
+        realtimeSendRef.current?.(MESSAGE_TYPES.ACTIVITY_SAVED, {});
+        publishSavedRef.current?.();
+    }, []);
 
     const sendCodeSnapshot = useCallback(() => {
         if (!editorRef) return;
@@ -142,7 +149,7 @@ export default function InterviewPage() {
                     sessionCode,
                     eventType: 'FULLSCREEN_EXIT',
                     eventData: timestamp,
-                }, { headers }).catch(() => {});
+                }, { headers }).then(notifyActivitySaved).catch(() => {});
 
                 realtimeSendRef.current?.(MESSAGE_TYPES.FULLSCREEN_EXIT, {
                     candidateId,
@@ -157,7 +164,7 @@ export default function InterviewPage() {
                     sessionCode,
                     eventType: 'FULLSCREEN_RESTORE',
                     eventData: timestamp,
-                }, { headers }).catch(() => {});
+                }, { headers }).then(notifyActivitySaved).catch(() => {});
 
                 realtimeSendRef.current?.(MESSAGE_TYPES.FULLSCREEN_RESTORE, {
                     candidateId,
@@ -168,7 +175,7 @@ export default function InterviewPage() {
 
         document.addEventListener('fullscreenchange', handleFullscreenChange);
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    }, [sessionCode, candidateId, token, session?.status]);
+    }, [sessionCode, candidateId, token, session?.status, notifyActivitySaved]);
 
     // Focus & Visibility integrity detection (deduplicated)
     useEffect(() => {
@@ -184,7 +191,7 @@ export default function InterviewPage() {
                 sessionCode,
                 eventType: 'FOCUS_LOST',
                 eventData: timestamp,
-            }, { headers }).catch(() => {});
+            }, { headers }).then(notifyActivitySaved).catch(() => {});
 
             pendingFocusRef.current += 1;
             focusCountRef.current += 1;
@@ -240,7 +247,7 @@ export default function InterviewPage() {
             window.removeEventListener('focus', handleWindowFocus);
             clearTimeout(focusWarningTimerRef.current);
         };
-    }, [sessionCode, candidateId, token, session?.status]);
+    }, [sessionCode, candidateId, token, session?.status, notifyActivitySaved]);
 
 
 
@@ -315,6 +322,13 @@ export default function InterviewPage() {
         let writing = false;
         let retryTimer;
         const alertRef = ref(firebaseDatabase, `alerts/${sessionCode}/${firebaseUid}`);
+        const publishSaved = () => {
+            if (!lastLogIdRef.current) return;
+            update(alertRef, { lastLogId: lastLogIdRef.current, tabSwitches: increment(0), lastAlert: new Date().toISOString() })
+                .catch(() => { if (active) setFirebaseWarning('Saved activity could not notify the live report.'); });
+        };
+        publishSavedRef.current = publishSaved;
+        publishSaved();
         const flush = (timestamp = new Date().toISOString()) => {
             if (!active || writing) return;
             const count = pendingFocusRef.current;
@@ -344,6 +358,7 @@ export default function InterviewPage() {
             clearTimeout(retryTimer);
             unsubscribe();
             if (flushFocusRef.current === flush) flushFocusRef.current = null;
+            if (publishSavedRef.current === publishSaved) publishSavedRef.current = null;
         };
     }, [firebaseDatabase, firebaseUid, sessionCode]);
 
@@ -357,11 +372,12 @@ export default function InterviewPage() {
         const headers = { Authorization: `Bearer ${token}` };
         setSubmitStatus('submitting');
         try {
-            await axios.post(`${API}/logs`, {
+            const saved = await axios.post(`${API}/logs`, {
                 sessionCode,
                 eventType: 'CODE_SUBMIT',
                 eventData: code
             }, { headers });
+            notifyActivitySaved(saved);
             setSubmitStatus('success');
             setSubmitNotification({ type: 'success', message: 'Code submitted successfully!' });
             setTimeout(() => setSubmitNotification(null), 4000);

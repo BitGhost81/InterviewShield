@@ -21,7 +21,10 @@ export function useRealtimeSession({ sessionCode, role, userId, token, onMessage
             role,
             userId,
             token,
-            onStatusChange: setStatus,
+            onStatusChange: nextStatus => {
+                setStatus(nextStatus);
+                if (nextStatus !== 'connected') setPresence(null);
+            },
             onMessage: (message) => {
                 if (message.type === MESSAGE_TYPES.PRESENCE) {
                     setPresence(message.payload);

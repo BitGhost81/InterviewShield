@@ -8,6 +8,7 @@ export const MESSAGE_TYPES = {
     FULLSCREEN_RESTORE: 'fullscreen_restore',
     FOCUS_LOST: 'focus_lost',
     FOCUS_RETURN: 'focus_return',
+    ACTIVITY_SAVED: 'activity_saved',
     WEBRTC_OFFER: 'webrtc_offer',
     WEBRTC_ANSWER: 'webrtc_answer',
     WEBRTC_ICE_CANDIDATE: 'webrtc_ice_candidate',

@@ -74,6 +74,8 @@ test('alerts preserve counts, prohibit spoofing/flags/deletion, and support atom
     await assertSucceeds(update(location, { tabSwitches: increment(1), lastAlert: new Date().toISOString() }));
     await assertSucceeds(update(location, { tabSwitches: increment(1), lastAlert: new Date().toISOString() }));
     await assertSucceeds(get(location));
+    await assertSucceeds(update(location, { lastLogId: 123 }));
+    await assertFails(update(location, { lastLogId: 'forged' }));
     await assertFails(set(location, { tabSwitches: 1, lastAlert: new Date().toISOString() }));
     await assertFails(update(location, { currentlyAway: true }));
     await assertFails(set(location, null));

@@ -22,7 +22,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/ai/copilot")
 public class AiCopilotController {
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(10)).build();
     private final ObjectMapper objectMapper;
 
     @Value("${ai.base-url:http://127.0.0.1:8000}")
@@ -54,6 +54,7 @@ public class AiCopilotController {
             String body = objectMapper.writeValueAsString(request);
             HttpRequest aiRequest = HttpRequest.newBuilder()
                 .uri(URI.create(aiBaseUrl.replaceAll("/+$", "") + "/chat"))
+                .timeout(java.time.Duration.ofSeconds(45))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();

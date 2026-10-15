@@ -25,6 +25,7 @@ const FULLSCREEN_EXIT = 'fullscreen_exit';
 const FULLSCREEN_RESTORE = 'fullscreen_restore';
 const FOCUS_LOST = 'focus_lost';
 const FOCUS_RETURN = 'focus_return';
+const ACTIVITY_SAVED = 'activity_saved';
 const WEBRTC_OFFER = 'webrtc_offer';
 const WEBRTC_ANSWER = 'webrtc_answer';
 const WEBRTC_ICE_CANDIDATE = 'webrtc_ice_candidate';
@@ -120,7 +121,7 @@ wss.on('connection', (socket) => {
       return;
     }
 
-    if ([CODE_SNAPSHOT, CODE_DELTA, CODE_RESYNC, FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN,
+    if ([CODE_SNAPSHOT, CODE_DELTA, CODE_RESYNC, FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN, ACTIVITY_SAVED,
       WEBRTC_OFFER, WEBRTC_ANSWER, WEBRTC_ICE_CANDIDATE].includes(message.type)) {
       relaySessionMessage(socket, message);
       return;
@@ -303,7 +304,7 @@ function relaySessionMessage(socket, message) {
     return;
   }
 
-  if ([FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN].includes(message.type) && socket.context.role !== 'candidate') {
+  if ([FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN, ACTIVITY_SAVED].includes(message.type) && socket.context.role !== 'candidate') {
     sendError(socket, 'unauthorized', 'Only the candidate may send tab activity alerts.');
     return;
   }
@@ -320,7 +321,7 @@ function relaySessionMessage(socket, message) {
     senderRole: socket.context.role,
     senderId: socket.context.senderId,
     payload: socket.context.role === 'candidate'
-      && [FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN].includes(message.type)
+      && [FULLSCREEN_EXIT, FULLSCREEN_RESTORE, FOCUS_LOST, FOCUS_RETURN, ACTIVITY_SAVED].includes(message.type)
       ? { ...(message.payload || {}), candidateId: socket.context.senderId }
       : (message.payload || {}),
   });

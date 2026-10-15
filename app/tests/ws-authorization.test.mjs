@@ -116,6 +116,8 @@ test('relay authorizes identity, isolation, duplicates and reconnects', { timeou
         const alert = await waitMessage(owner, m => m.type === 'focus_lost');
         assert.equal(alert.senderId, '2');
         assert.equal(alert.payload.candidateId, '2');
+        candidate.ws.send(JSON.stringify({ type: 'activity_saved', sessionCode: 'ABC123', payload: { candidateId: 999 } }));
+        assert.equal((await waitMessage(owner, m => m.type === 'activity_saved')).payload.candidateId, '2');
     });
     await t.test('cross-session and role-forged messages are rejected', async () => {
         candidate.ws.send(JSON.stringify({ type: 'code_snapshot', sessionCode: 'OTHER' }));

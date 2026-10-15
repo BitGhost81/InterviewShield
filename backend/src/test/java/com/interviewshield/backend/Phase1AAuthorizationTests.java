@@ -161,7 +161,7 @@ class Phase1AAuthorizationTests {
         rejected(HttpStatus.FORBIDDEN, () -> controller.processAudio("ABC123", audio, new UsernamePasswordAuthenticationToken("otherInterviewer", null)));
         // An empty upload reaches validation after ownership, without calling Python.
         assertEquals(HttpStatus.BAD_REQUEST, controller.processAudio("ABC123", audio, new UsernamePasswordAuthenticationToken("owner", null)).getStatusCode());
-        assertEquals("FAILED", session.getAiStatus());
+        assertNull(session.getAiStatus()); // Invalid uploads must not overwrite existing processing state.
     }
 
     @Test

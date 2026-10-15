@@ -32,10 +32,14 @@ def process_audio_payload(req_data):
 
     print(f"[INTERVIEW_AI] Audio received: base64 length={len(audio_base64)}, mime_type={mime_type}")
 
-    # Audio size check (~20MB base64 limit check for single request)
-    if len(audio_base64) > 25 * 1024 * 1024:
-        print(f"[INTERVIEW_AI] ERROR: Audio too large ({len(audio_base64)} bytes base64)")
-        return 400, {"error": "Audio recording exceeds supported gemini-3.5-transcribe limit."}
+    # Match Spring's 18 MiB raw limit (24 MiB after base64 encoding).
+    if len(audio_base64) > 24 * 1024 * 1024:
+        return 413, {"error": "Audio recording exceeds the 18 MiB limit."}
+    try:
+        if len(base64.b64decode(audio_base64, validate=True)) > 18 * 1024 * 1024:
+            return 413, {"error": "Audio recording exceeds the 18 MiB limit."}
+    except (ValueError, TypeError):
+        return 400, {"error": "Invalid audio data."}
 
     # Step 1: Transcription & Diarization using gemini-3.5-transcribe
     transcribe_model = os.getenv("GEMINI_TRANSCRIBE_MODEL", "gemini-3.5-transcribe")
@@ -85,33 +89,32 @@ def process_audio_payload(req_data):
                             if "text" in part:
                                 text_val = part["text"]
                                 full_text_parts.append(text_val)
-                                text_preview = text_val[:200].replace("\n", "\\n")
-                                print(f"[INTERVIEW_AI] part[{i}].text preview: {text_preview}...")
                         raw_transcript = "\n".join(full_text_parts).strip()
             print(f"[INTERVIEW_AI] Transcription complete: transcript length={len(raw_transcript)}")
             break
         except urllib.error.HTTPError as err:
-            err_body = err.read().decode("utf-8", errors="ignore")
-            print(f"[INTERVIEW_AI] ERROR: {transcribe_model} HTTP Error {err.code} on attempt {attempt}/{max_attempts}: {err_body}")
+            print(f"[INTERVIEW_AI] Transcription HTTP {err.code}, attempt {attempt}/{max_attempts}")
 
             # Only retry transient errors (429 rate limit or 5xx server errors)
             is_transient = err.code == 429 or 500 <= err.code <= 599
             if is_transient and attempt < max_attempts:
                 retry_after_header = err.headers.get("Retry-After") if err.headers else None
+                err.close()
                 sleep_seconds = base_delay * (2 ** (attempt - 1))
                 if retry_after_header:
                     try:
-                        sleep_seconds = max(float(retry_after_header), 1.0)
+                        sleep_seconds = min(max(float(retry_after_header), 1.0), 30.0)
                     except (ValueError, TypeError):
                         pass
                 print(f"[INTERVIEW_AI] Transient error HTTP {err.code}. Retrying in {sleep_seconds:.1f}s (attempt {attempt + 1}/{max_attempts})...")
                 time.sleep(sleep_seconds)
                 continue
 
+            err.close()
             return 502, {"error": f"Transcription model gemini-3.5-transcribe failed with HTTP {err.code}"}
         except Exception as exc:
-            print(f"[INTERVIEW_AI] ERROR: {transcribe_model} request failed on attempt {attempt}/{max_attempts}: {exc}")
-            return 502, {"error": f"Transcription failed: {exc}"}
+            print(f"[INTERVIEW_AI] Transcription failed on attempt {attempt}/{max_attempts}")
+            return 502, {"error": "Transcription unavailable. Please retry later."}
 
     if not raw_transcript:
         print("[INTERVIEW_AI] ERROR: Empty transcript returned from Gemini")
@@ -188,5 +191,5 @@ Return ONLY a valid JSON object with EXACTLY this structure:
                 "report": report_dict
             }
     except Exception as exc:
-        print(f"[INTERVIEW_AI] ERROR: Report generation failed: {exc}")
-        return 502, {"error": f"Report generation failed: {exc}"}
+        print("[INTERVIEW_AI] Report generation unavailable")
+        return 502, {"error": "Report generation unavailable. Please retry later."}

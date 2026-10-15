@@ -3,6 +3,9 @@ import json
 import urllib.request
 import urllib.error
 from pathlib import Path
+from threading import BoundedSemaphore
+
+audio_slots = BoundedSemaphore(2)
 from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 
@@ -22,7 +25,14 @@ class GeminiCopilotHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"error": "Not found"}')
             return
 
-        content_length = int(self.headers.get('Content-Length', 0))
+        self.connection.settimeout(30)
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+        except ValueError:
+            self.send_error(400); return
+        limit = 26 * 1024 * 1024 if self.path == "/process-audio" else 1024 * 1024
+        if content_length <= 0 or content_length > limit:
+            self.send_error(413); return
         body_bytes = self.rfile.read(content_length)
         
         try:
@@ -35,7 +45,12 @@ class GeminiCopilotHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/process-audio":
-            status_code, resp_dict = process_audio_payload(req_data)
+            if not audio_slots.acquire(blocking=False):
+                self.send_error(503); return
+            try:
+                status_code, resp_dict = process_audio_payload(req_data)
+            finally:
+                audio_slots.release()
             out_bytes = json.dumps(resp_dict).encode('utf-8')
             self.send_response(status_code)
             self.send_header('Content-Type', 'application/json')
@@ -118,18 +133,15 @@ class GeminiCopilotHandler(BaseHTTPRequestHandler):
                 self.wfile.write(out_bytes)
 
         except urllib.error.HTTPError as err:
-            err_body = err.read().decode("utf-8", errors="ignore")
-            print("Gemini HTTP Error:", err.code, err_body)
-            out_bytes = json.dumps({"error": f"Gemini API Error {err.code}: {err_body}"}).encode('utf-8')
+            print("Gemini HTTP Error:", err.code)
+            out_bytes = json.dumps({"error": "AI copilot unavailable"}).encode('utf-8')
             self.send_response(502)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out_bytes)))
             self.end_headers()
             self.wfile.write(out_bytes)
         except Exception as exc:
-            import traceback
-            traceback.print_exc()
-            out_bytes = json.dumps({"error": f"Gemini request failed: {exc}"}).encode('utf-8')
+            out_bytes = json.dumps({"error": "AI copilot unavailable"}).encode('utf-8')
             self.send_response(502)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out_bytes)))

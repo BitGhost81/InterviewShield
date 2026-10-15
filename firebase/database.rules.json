@@ -23,6 +23,7 @@
           ".validate": "newData.hasChildren(['tabSwitches', 'lastAlert'])",
           "tabSwitches": { ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && (!data.exists() || newData.val() >= data.val())" },
           "lastAlert": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "lastLogId": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() % 1 === 0" },
           "$other": { ".validate": false }
         }
       }

@@ -26,6 +26,7 @@ class Phase1AHttpTests {
     @Autowired MockMvc mvc;
     @Autowired JwtUtil jwt;
     @MockBean SessionService sessions;
+    @MockBean AudioProcessingService audio;
     @MockBean SessionAuthorizationService authorization;
     @MockBean ActivityLogService logs;
     @MockBean UserRepository users;
@@ -76,6 +77,7 @@ class Phase1AHttpTests {
         String auth = bearer("candidate", "CANDIDATE");
         mvc.perform(multipart("/api/sessions/ABC123/process-audio").file("audio", new byte[] {1})
             .header("Authorization", auth)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/sessions/ABC123/retry-audio").header("Authorization", auth)).andExpect(status().isForbidden());
         mvc.perform(post("/api/ai/copilot/chat").header("Authorization", auth)
             .contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isForbidden());

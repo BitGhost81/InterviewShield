@@ -9,6 +9,10 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class AuthorizationExceptionHandler {
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> uploadTooLarge() {
+        return ResponseEntity.status(413).body(Map.of("error", "Recording exceeds the 18 MiB audio limit"));
+    }
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ResponseEntity<Map<String, Object>> concurrentUpdate() {
         return ResponseEntity.status(409).body(Map.of("error", "Session changed; please retry"));

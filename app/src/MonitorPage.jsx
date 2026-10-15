@@ -7,6 +7,7 @@ import axios from 'axios';
 import Editor from '@monaco-editor/react';
 import { useRealtimeSession } from './hooks/useRealtimeSession';
 import { MESSAGE_TYPES } from './realtime/messages';
+import { createReportRefresh } from './realtime/reportRefresh';
 import { useWebRTCCall } from './hooks/useWebRTCCall';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { VideoCallPanel } from './components/VideoCallPanel';
@@ -43,6 +44,11 @@ export default function MonitorPage() {
     const [endingSession, setEndingSession] = useState(false);
     const [copilotOpen, setCopilotOpen] = useState(false);
     const [aiReportData, setAiReportData] = useState(null);
+    const [aiRefreshNonce, setAiRefreshNonce] = useState(0);
+    const [retryingAi, setRetryingAi] = useState(false);
+    const [operationError, setOperationError] = useState('');
+    const audioUploadedRef = React.useRef(false);
+    const reportRefreshRef = React.useRef(null);
     const token = localStorage.getItem('token');
     const userRole = localStorage.getItem('userRole');
     const headers = React.useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
@@ -77,12 +83,12 @@ export default function MonitorPage() {
                 if (isSubscribed) {
                     setAiReportData(res.data);
                     // Stop polling once we reach a terminal AI status
-                    if (TERMINAL_STATUSES.includes(res.data?.aiStatus)) {
+                    if (TERMINAL_STATUSES.includes(res.data?.aiStatus) || res.data?.processingState === 'UNAVAILABLE') {
                         clearInterval(interval);
                     }
                 }
-            } catch (err) {
-                console.warn('Failed to fetch AI report:', err);
+            } catch {
+                console.warn('Failed to fetch AI report.');
             }
         };
 
@@ -92,7 +98,7 @@ export default function MonitorPage() {
             isSubscribed = false;
             clearInterval(interval);
         };
-    }, [sessionCode, token, headers]);
+    }, [sessionCode, token, headers, aiRefreshNonce]);
 
     const parsedAiReport = React.useMemo(() => {
         if (!aiReportData?.aiReportJson) return null;
@@ -115,6 +121,7 @@ export default function MonitorPage() {
         userId: localStorage.getItem('userId'),
         token,
         onMessage: (message) => {
+            if (message.type === MESSAGE_TYPES.ACTIVITY_SAVED || message.type === MESSAGE_TYPES.PRESENCE) reportRefreshRef.current?.trigger();
             if (message.type === MESSAGE_TYPES.ERROR && message.payload?.code === 'session_ended') {
                 setSession((prev) => ({ ...(prev || {}), status: 'ENDED' }));
                 return;
@@ -222,7 +229,13 @@ export default function MonitorPage() {
             return;
         }
         axios.get(`${API}/sessions/${sessionCode}`, { headers })
-            .then((res) => setSession(res.data))
+            .then((res) => {
+                setSession(res.data);
+                if (res.data.candidateId) {
+                    setAlerts(previous => ({ ...previous, [res.data.candidateId]: previous[res.data.candidateId] || { tabSwitches: 0 } }));
+                    if (res.data.status !== 'ACTIVE') setSelectedCandidate(String(res.data.candidateId));
+                }
+            })
             .catch((err) => {
                 if (err.response?.status === 403) {
                     alert('You do not have permission to monitor this session.');
@@ -240,30 +253,44 @@ export default function MonitorPage() {
 
         setEndingSession(true);
         try {
-            // Step 1: Stop recording and get final audio Blob (max 3s wait via timeout safeguard)
-            const audioBlob = await stopRecording();
-
-            // Step 2: Fire-and-forget audio upload — do NOT await. The interviewer must NOT wait for upload.
-            // Audio is dispatched to Spring in the background; session end proceeds immediately.
-            if (audioBlob && audioBlob.size > 0) {
-                const formData = new FormData();
-                formData.append('audio', audioBlob, 'interview_recording.webm');
-                axios.post(`${API}/sessions/${sessionCode}/process-audio`, formData, {
-                    headers: { ...headers, 'Content-Type': 'multipart/form-data' },
-                }).catch((uploadErr) => {
-                    console.warn('[AI] Audio upload failed silently (session still ends):', uploadErr);
-                });
+            setOperationError('');
+            if (!audioUploadedRef.current) {
+                let audioBlob;
+                try { audioBlob = await stopRecording(); }
+                catch {
+                    if (!window.confirm('Recording could not finalize. End without saved audio? AI transcription will be unavailable.')) return;
+                }
+                if (audioBlob?.size > 18 * 1024 * 1024) {
+                    if (!window.confirm('Recording exceeds the 18 MiB limit. End without AI transcription?')) return;
+                    audioBlob = null;
+                }
+                if (audioBlob?.size > 0) {
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'interview_recording.webm');
+                    try {
+                        await axios.post(`${API}/sessions/${sessionCode}/process-audio`, formData, { headers });
+                        audioUploadedRef.current = true;
+                    } catch {
+                        const saved = await axios.get(`${API}/sessions/${sessionCode}/ai-report`, { headers });
+                        if (!saved.data.audioAvailable && saved.data.aiStatus !== 'COMPLETED') {
+                            throw new Error('Recording was not saved. Keep this page open and retry End Session. Maximum audio size is 18 MiB.');
+                        }
+                        audioUploadedRef.current = true;
+                    }
+                }
             }
-
-            // Step 3: End the session immediately (does not wait for audio upload or AI processing)
             const res = await axios.post(`${API}/sessions/${sessionCode}/end`, {}, { headers });
+            const candidateForReport = presence?.candidateId || session?.candidateId;
+            if (candidateForReport) setSelectedCandidate(String(candidateForReport));
+            setAiRefreshNonce(value => value + 1);
+            reportRefreshRef.current?.trigger();
 
             // Step 4: Kick candidate via WebSocket signal
             sendRealtime(MESSAGE_TYPES.LEAVE_SESSION, { reason: 'session_ended' });
-            setSession((prev) => ({ ...(prev || {}), status: res.data?.status || 'ENDED', aiStatus: 'PROCESSING' }));
+            setSession((prev) => ({ ...(prev || {}), status: res.data?.status || 'ENDED' }));
         } catch (err) {
             // Restore button state so interviewer can try again
-            alert(err.response?.data?.error || 'Failed to end session. Please try again.');
+            setOperationError(err.response?.data?.error || err.message || 'Failed to end session. Please try again.');
         } finally {
             setEndingSession(false);
         }
@@ -276,7 +303,10 @@ export default function MonitorPage() {
         const alertsRef = ref(firebaseDatabase, `alerts/${sessionCode}`);
         const unsub = onValue(alertsRef, (snapshot) => {
             const data = snapshot.val();
-            if (active && data) setAlerts(previous => mergeAlertHistory(previous, data));
+            if (active && data) {
+                setAlerts(previous => mergeAlertHistory(previous, data));
+                reportRefreshRef.current?.trigger();
+            }
         }, () => { if (active) setFirebaseWarning('Firebase alert history unavailable.'); });
         return () => { active = false; unsub(); };
     }, [sessionCode, firebaseDatabase]);
@@ -296,23 +326,33 @@ export default function MonitorPage() {
         return () => { active = false; unsub(); };
     }, [liveCode, sessionCode, realtimeStatus, firebaseDatabase]);
 
-    const loadReport = async (candidateId) => {
+    const loadReport = (candidateId) => {
+        if (String(candidateId) === String(selectedCandidate)) reportRefreshRef.current?.trigger();
+        else { setReport(null); setSelectedCandidate(String(candidateId)); }
+    };
+
+    useEffect(() => {
+        if (!selectedCandidate || !token) return;
+        const controller = new AbortController();
+        const refresh = createReportRefresh(async () => {
+            const { data } = await axios.get(`${API}/logs/${sessionCode}/${selectedCandidate}`, { headers, signal: controller.signal });
+            if (controller.signal.aborted) return;
+            setReport(data);
+            if (data.candidateName) setCandidateNames(previous => ({ ...previous, [selectedCandidate]: data.candidateName }));
+        }, () => setOperationError('Integrity report could not refresh. Reconnect or use Refresh.'));
+        reportRefreshRef.current = refresh;
+        refresh.trigger();
+        return () => { controller.abort(); refresh.close(); if (reportRefreshRef.current === refresh) reportRefreshRef.current = null; };
+    }, [sessionCode, selectedCandidate, token, headers]);
+
+    const retryAi = async () => {
+        setRetryingAi(true); setOperationError('');
         try {
-            const res = await axios.get(
-                `${API}/logs/${sessionCode}/${candidateId}`,
-                { headers }
-            );
-            setReport(res.data);
-            setSelectedCandidate(candidateId);
-            if (res.data?.candidateName) {
-                setCandidateNames((prev) => ({
-                    ...prev,
-                    [String(candidateId)]: res.data.candidateName,
-                }));
-            }
-        } catch {
-            alert('Failed to load report');
-        }
+            await axios.post(`${API}/sessions/${sessionCode}/retry-audio`, {}, { headers });
+            setAiReportData(previous => ({ ...previous, aiStatus: 'PROCESSING', retryAvailable: false, processingState: 'PROCESSING' }));
+        } catch (error) {
+            setOperationError(error.response?.data?.error || 'AI processing could not start. Try again later.');
+        } finally { setRetryingAi(false); setAiRefreshNonce(value => value + 1); }
     };
 
     const getRiskColor = (score) => {
@@ -389,6 +429,7 @@ export default function MonitorPage() {
                     {firebase.error || firebaseWarning}
                 </div>
             )}
+            {(operationError || call.recordingError) && <div role="alert" className="px-6 py-2 text-xs text-amber bg-amber/10">{operationError || call.recordingError}</div>}
             {/* Navbar */}
             <header className="px-6 py-3.5 border-b border-white/10 glass-subtle sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
@@ -665,9 +706,9 @@ export default function MonitorPage() {
                                 <div className="text-white/40 text-[11px] mt-0.5">ID: #{selectedCandidate} · Integrity Verified</div>
                             </div>
                             <div>
-                                <span className="text-white/40 block mb-1 uppercase tracking-wider text-[10px] font-semibold">Interview Duration</span>
+                                <span className="text-white/40 block mb-1 uppercase tracking-wider text-[10px] font-semibold">Logged Activity Span</span>
                                 <div className="font-display font-semibold text-white text-sm">
-                                    {typeof report.durationMinutes === 'number' ? `${report.durationMinutes} min active` : 'Active'}
+                                    {typeof report.durationMinutes === 'number' ? `${report.durationMinutes} min activity span` : 'Activity span'}
                                 </div>
                                 <div className="text-white/40 text-[11px] mt-0.5">
                                     {report.firstActivityAt ? `Started: ${new Date(report.firstActivityAt).toLocaleTimeString()}` : (report.sessionCreatedAt ? `Created: ${new Date(report.sessionCreatedAt).toLocaleTimeString()}` : 'Live session')}
@@ -715,7 +756,7 @@ export default function MonitorPage() {
                                     aiReportData?.aiStatus === 'FAILED' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
                                     'bg-white/10 text-white/50'
                                 }`}>
-                                    {aiReportData?.aiStatus || 'PENDING'}
+                                    {aiReportData?.processingState || aiReportData?.aiStatus || 'PENDING'}
                                 </span>
                             </div>
 
@@ -728,10 +769,18 @@ export default function MonitorPage() {
 
                             {aiReportData?.aiStatus === 'FAILED' && (
                                 <div className="py-4 px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
-                                    ⚠️ AI interview transcription or report generation was unavailable for this session.
+                                    {aiReportData?.retryAvailable ? 'AI processing failed. The saved recording is available for retry.' : 'AI processing is unavailable; no retained recording is available.'}
                                 </div>
                             )}
 
+                            {aiReportData?.retryAvailable && (
+                                <button onClick={retryAi} disabled={retryingAi} className="button-primary px-4 py-2 text-xs mb-3">
+                                    {retryingAi ? 'Starting...' : 'Retry AI report'}
+                                </button>
+                            )}
+                            {aiReportData?.processingState === 'UNAVAILABLE' && aiReportData?.aiStatus !== 'FAILED' && (
+                                <p className="text-xs text-white/60 mb-3">No retained recording is available for transcription.</p>
+                            )}
                             {aiReportData?.aiStatus === 'COMPLETED' && parsedAiReport && (
                                 <div className="space-y-4 text-xs leading-relaxed text-white/90">
                                     {parsedAiReport.summary && (

@@ -200,6 +200,9 @@ public class SessionService {
                 userRepository.findById(candidateId).ifPresent(candidateUser -> {
                     response.put("candidateName", candidateUser.getName());
                 });
+            } else if (session.getCandidateId() != null) {
+                response.put("candidateId", session.getCandidateId());
+                userRepository.findById(session.getCandidateId()).ifPresent(candidateUser -> response.put("candidateName", candidateUser.getName()));
             }
         }
         return response;

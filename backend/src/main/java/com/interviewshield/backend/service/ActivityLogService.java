@@ -52,28 +52,28 @@ public class ActivityLogService {
     }
 
     public List<ActivityLog> getLogsBySession(String sessionCode) {
-        return activityLogRepository.findBySessionCode(sessionCode);
+        return activityLogRepository.findBySessionCodeOrderByCreatedAtAscIdAsc(sessionCode);
     }
 
     public List<ActivityLog> getLogsBySessionAndCandidate(String sessionCode, Long candidateId) {
-        return activityLogRepository.findBySessionCodeAndCandidateId(sessionCode, candidateId);
+        return activityLogRepository.findBySessionCodeAndCandidateIdOrderByCreatedAtAscIdAsc(sessionCode, candidateId);
     }
 
     public Map<String, Object> getReport(String sessionCode, Long candidateId) {
         List<ActivityLog> logs = activityLogRepository
-            .findBySessionCodeAndCandidateId(sessionCode, candidateId);
+            .findBySessionCodeAndCandidateIdOrderByCreatedAtAscIdAsc(sessionCode, candidateId);
 
         long tabSwitches = logs.stream()
-            .filter(l -> l.getEventType().equals("TAB_SWITCH"))
+            .filter(l -> "TAB_SWITCH".equals(l.getEventType()))
             .count();
 
         // Risk score formula — remember this for viva
         long fullscreenExits = logs.stream()
-            .filter(l -> l.getEventType().equals("FULLSCREEN_EXIT"))
+            .filter(l -> "FULLSCREEN_EXIT".equals(l.getEventType()))
             .count();
 
         long focusLosses = logs.stream()
-            .filter(l -> l.getEventType().equals("FOCUS_LOST"))
+            .filter(l -> "FOCUS_LOST".equals(l.getEventType()))
             .count();
 
         long totalFocusLosses = focusLosses + tabSwitches;

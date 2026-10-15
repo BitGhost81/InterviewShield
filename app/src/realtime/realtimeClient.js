@@ -26,6 +26,7 @@ export function createRealtimeClient({
         'invalid_message',
         'invalid_json',
         'session_ended',
+        'duplicate_connection',
     ]);
 
     const setStatus = (status) => onStatusChange?.(status);

@@ -43,6 +43,23 @@ public class InterviewSession {
 	@Column(length = 30)
 	private String aiStatus;
 
+	private String recordingFile;
+	private String recordingMime;
+	private LocalDateTime recordingExpiresAt;
+	private LocalDateTime processingStartedAt;
+	private String processingToken;
+	public String getProcessingToken() { return processingToken; }
+	public void setProcessingToken(String value) { processingToken = value; }
+
+	public String getRecordingFile() { return recordingFile; }
+	public void setRecordingFile(String value) { recordingFile = value; }
+	public String getRecordingMime() { return recordingMime; }
+	public void setRecordingMime(String value) { recordingMime = value; }
+	public LocalDateTime getRecordingExpiresAt() { return recordingExpiresAt; }
+	public void setRecordingExpiresAt(LocalDateTime value) { recordingExpiresAt = value; }
+	public LocalDateTime getProcessingStartedAt() { return processingStartedAt; }
+	public void setProcessingStartedAt(LocalDateTime value) { processingStartedAt = value; }
+
 	private boolean candidateReady = false;
 	private boolean interviewerReady = false;
 
