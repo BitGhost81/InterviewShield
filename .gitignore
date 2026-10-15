@@ -10,3 +10,6 @@ app/.env.development.local
 app/.env.production
 app/.env.production.local
 AI/__pycache__/
+# Keep Firebase service-account private keys outside the repository.
+**/*service-account*.json
+**/*firebase-adminsdk*.json

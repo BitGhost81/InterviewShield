@@ -1,27 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-import { initializeApp, getApps } from 'firebase/app';
-import { getDatabase, ref, onValue, set, update, increment } from 'firebase/database';
+import { ref, get, onValue, update, increment, runTransaction, serverTimestamp } from 'firebase/database';
+import { useFirebaseSession } from './hooks/useFirebaseSession';
+import { createCodeBackup, mayRecoverCode, nextBackupValue } from './firebase/reliability';
 import axios from 'axios';
 import { useRealtimeSession } from './hooks/useRealtimeSession';
 import { MESSAGE_TYPES } from './realtime/messages';
 import { useWebRTCCall } from './hooks/useWebRTCCall';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { VideoCallPanel } from './components/VideoCallPanel';
-
-const firebaseConfig = {
-    apiKey: "AIzaSyC2uS-fcWCYzMyQqCy72EkBl8CWdoLCpus",
-    authDomain: "collab-editor-44d5f.firebaseapp.com",
-    databaseURL: "https://collab-editor-44d5f-default-rtdb.firebaseio.com",
-    projectId: "collab-editor-44d5f",
-    storageBucket: "collab-editor-44d5f.firebasestorage.app",
-    messagingSenderId: "679361511798",
-    appId: "1:679361511798:web:ad5885e20b9784cebd7a57"
-};
-
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getDatabase(app);
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -43,9 +31,19 @@ export default function InterviewPage() {
     const isAwayRef = useRef(false);
     const codeVersionRef = useRef(0);
     const realtimeSendRef = useRef(null);
-    const realtimeConnectedRef = useRef(false);
     const webRtcSignalRef = useRef(null);
     const activeSessionCode = session?.status === 'ACTIVE' ? sessionCode : null;
+    const firebase = useFirebaseSession(activeSessionCode, token);
+    const firebaseDatabase = firebase.connection?.database;
+    const firebaseUid = firebase.connection?.uid;
+    const [firebaseWarning, setFirebaseWarning] = useState('');
+    const backupRef = useRef(null);
+    const editedSinceMountRef = useRef(false);
+    const suppressEditorRef = useRef(false);
+    const focusCountRef = useRef(0);
+    const pendingFocusRef = useRef(0);
+    const flushFocusRef = useRef(null);
+    const focusWarningTimerRef = useRef(null);
 
     const sendCodeSnapshot = useCallback(() => {
         if (!editorRef) return;
@@ -98,7 +96,6 @@ export default function InterviewPage() {
     }, [sendRealtime]);
 
     useEffect(() => {
-        realtimeConnectedRef.current = realtimeStatus === 'connected';
         if (realtimeStatus === 'connected') {
             sendCodeSnapshot();
         }
@@ -189,18 +186,17 @@ export default function InterviewPage() {
                 eventData: timestamp,
             }, { headers }).catch(() => {});
 
-            update(ref(db, `alerts/${sessionCode}/${candidateId}`), {
-                tabSwitches: increment(1),
-                lastAlert: timestamp,
-            }).catch(() => {});
+            pendingFocusRef.current += 1;
+            focusCountRef.current += 1;
+            flushFocusRef.current?.(timestamp);
 
             realtimeSendRef.current?.(MESSAGE_TYPES.FOCUS_LOST, {
                 candidateId,
                 occurredAt: timestamp,
-                count: tabSwitches + 1,
+                count: focusCountRef.current,
             });
 
-            setTabSwitches(prev => prev + 1);
+            setTabSwitches(focusCountRef.current);
         };
 
         const handleReturn = () => {
@@ -214,7 +210,8 @@ export default function InterviewPage() {
             });
 
             setFocusWarning('Interview activity detected outside the interview window.');
-            setTimeout(() => setFocusWarning(null), 4000);
+            clearTimeout(focusWarningTimerRef.current);
+            focusWarningTimerRef.current = setTimeout(() => setFocusWarning(null), 4000);
         };
 
         const handleVisibilityChange = () => {
@@ -241,56 +238,114 @@ export default function InterviewPage() {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('blur', handleWindowBlur);
             window.removeEventListener('focus', handleWindowFocus);
+            clearTimeout(focusWarningTimerRef.current);
         };
-    }, [sessionCode, candidateId, tabSwitches, token, session?.status]);
+    }, [sessionCode, candidateId, token, session?.status]);
 
 
 
 
-    // Monaco sync with Firebase
+    // WebSocket remains the primary live path; backup writes do not depend on send success.
     const handleEditorMount = (editor) => {
+        editedSinceMountRef.current = false;
         setEditorRef(editor);
-        const docRef = ref(db, `documents/${sessionCode}`);
-        let suppress = false;
+    };
 
-        onValue(docRef, (snapshot) => {
-            if (realtimeConnectedRef.current) return;
-            const data = snapshot.val();
-            if (!data) return;
-            const remote = data.content || '';
-            const local = editor.getValue();
-            if (remote !== local) {
-                suppress = true;
-                const pos = editor.getPosition();
-                editor.setValue(remote);
-                if (pos) editor.setPosition(pos);
-                suppress = false;
-            }
-        });
-
-        editor.onDidChangeModelContent((event) => {
-            if (suppress) return;
+    useEffect(() => {
+        if (!editorRef) return;
+        const subscription = editorRef.onDidChangeModelContent((event) => {
+            if (suppressEditorRef.current) return;
+            editedSinceMountRef.current = true;
             const previousVersion = codeVersionRef.current;
             codeVersionRef.current += 1;
-
-            const sent = realtimeSendRef.current?.(MESSAGE_TYPES.CODE_DELTA, {
+            realtimeSendRef.current?.(MESSAGE_TYPES.CODE_DELTA, {
                 previousVersion,
                 version: codeVersionRef.current,
                 changes: event.changes,
             });
+            backupRef.current?.schedule(editorRef.getValue());
+        });
+        return () => subscription.dispose();
+    }, [editorRef]);
 
-            if (!sent) {
-                set(docRef, { content: editor.getValue() });
+    useEffect(() => {
+        if (!editorRef || !firebaseDatabase || !firebaseUid) return;
+        let active = true;
+        let backup;
+        let recoveryTimer;
+        const docRef = ref(firebaseDatabase, `documents/${sessionCode}`);
+        const recover = () => get(docRef).then(snapshot => {
+            if (!active) return;
+            const data = snapshot.val();
+            if (mayRecoverCode(editedSinceMountRef.current, data)) {
+                suppressEditorRef.current = true;
+                try { editorRef.setValue(data.content); } finally { suppressEditorRef.current = false; }
+                sendCodeSnapshot();
+            }
+            backup = createCodeBackup({
+                initialRevision: Number(data?.revision) || 0,
+                write: async (content, revision, isClosed) => {
+                    const result = await runTransaction(docRef,
+                        current => nextBackupValue(current, revision, content, firebaseUid, serverTimestamp(), isClosed()),
+                        { applyLocally: false });
+                    return result.committed;
+                },
+                onError: warning => { if (active) setFirebaseWarning(warning); },
+            });
+            backupRef.current = backup;
+            backup.schedule(editorRef.getValue());
+        }).catch(() => {
+            if (active) {
+                setFirebaseWarning('Firebase recovery unavailable; current editor is preserved.');
+                recoveryTimer = setTimeout(recover, 5000);
             }
         });
+        void recover();
+        return () => {
+            active = false;
+            clearTimeout(recoveryTimer);
+            backup?.close();
+            if (backupRef.current === backup) backupRef.current = null;
+        };
+    }, [editorRef, firebaseDatabase, firebaseUid, sessionCode, sendCodeSnapshot]);
 
-        if (realtimeConnectedRef.current) {
-            realtimeSendRef.current?.(MESSAGE_TYPES.CODE_SNAPSHOT, {
-                version: codeVersionRef.current,
-                content: editor.getValue(),
-            });
-        }
-    };
+    useEffect(() => {
+        if (!firebaseDatabase || !firebaseUid) return;
+        let active = true;
+        let writing = false;
+        let retryTimer;
+        const alertRef = ref(firebaseDatabase, `alerts/${sessionCode}/${firebaseUid}`);
+        const flush = (timestamp = new Date().toISOString()) => {
+            if (!active || writing) return;
+            const count = pendingFocusRef.current;
+            if (!count) return;
+            writing = true;
+            pendingFocusRef.current = 0;
+            update(alertRef, { tabSwitches: increment(count), lastAlert: timestamp })
+                .then(() => { writing = false; if (active) flush(); })
+                .catch(() => {
+                    writing = false;
+                    pendingFocusRef.current += count;
+                    if (active) {
+                        setFirebaseWarning('Firebase alert history could not be saved; retrying.');
+                        retryTimer = setTimeout(flush, 5000);
+                    }
+                });
+        };
+        flushFocusRef.current = flush;
+        const unsubscribe = onValue(alertRef, snapshot => {
+            if (!active) return;
+            focusCountRef.current = Math.max(focusCountRef.current, (Number(snapshot.val()?.tabSwitches) || 0) + pendingFocusRef.current);
+            setTabSwitches(focusCountRef.current);
+        }, () => { if (active) setFirebaseWarning('Firebase alert history unavailable.'); });
+        flush();
+        return () => {
+            active = false;
+            clearTimeout(retryTimer);
+            unsubscribe();
+            if (flushFocusRef.current === flush) flushFocusRef.current = null;
+        };
+    }, [firebaseDatabase, firebaseUid, sessionCode]);
 
     const [submitStatus, setSubmitStatus] = useState('idle');
     const [submitNotification, setSubmitNotification] = useState(null);
@@ -459,6 +514,11 @@ export default function InterviewPage() {
             </header>
 
             {/* Workspace */}
+            {(firebase.error || firebaseWarning) && (
+                <div role="status" className="px-5 py-2 text-xs text-amber bg-amber/10">
+                    {firebase.error || firebaseWarning}
+                </div>
+            )}
             <div className="flex flex-1 overflow-hidden p-3 gap-3 min-h-0">
                 {/* Left Column: Problem & Video */}
                 <div className="w-80 flex flex-col gap-3 overflow-y-auto flex-shrink-0">

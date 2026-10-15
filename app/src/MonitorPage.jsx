@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { initializeApp, getApps } from 'firebase/app';
-import { getDatabase, ref, onValue } from 'firebase/database';
+import { ref, onValue } from 'firebase/database';
+import { useFirebaseSession } from './hooks/useFirebaseSession';
+import { mergeAlertHistory } from './firebase/reliability';
 import axios from 'axios';
 import Editor from '@monaco-editor/react';
 import { useRealtimeSession } from './hooks/useRealtimeSession';
@@ -11,18 +12,6 @@ import { ConnectionStatus } from './components/ConnectionStatus';
 import { VideoCallPanel } from './components/VideoCallPanel';
 import { CopilotDrawer } from './components/CopilotDrawer';
 
-const firebaseConfig = {
-    apiKey: "AIzaSyC2uS-fcWCYzMyQqCy72EkBl8CWdoLCpus",
-    authDomain: "collab-editor-44d5f.firebaseapp.com",
-    databaseURL: "https://collab-editor-44d5f-default-rtdb.firebaseio.com",
-    projectId: "collab-editor-44d5f",
-    storageBucket: "collab-editor-44d5f.firebasestorage.app",
-    messagingSenderId: "679361511798",
-    appId: "1:679361511798:web:ad5885e20b9784cebd7a57"
-};
-
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getDatabase(app);
 const API = import.meta.env.VITE_API_URL || '/api';
 
 function applyMonacoChanges(content, changes) {
@@ -60,6 +49,9 @@ export default function MonitorPage() {
     const [liveCode, setLiveCode] = useState(null);
     const [candidateCode, setCandidateCode] = useState('');
     const [candidatePhoto, setCandidatePhoto] = useState('');
+    const firebase = useFirebaseSession(session ? sessionCode : null, token);
+    const firebaseDatabase = firebase.connection?.database;
+    const [firebaseWarning, setFirebaseWarning] = useState('');
 
     useEffect(() => {
         if (!sessionCode || !token) return;
@@ -188,7 +180,7 @@ export default function MonitorPage() {
                     ...previous,
                     [candidateId]: {
                         ...previous[candidateId],
-                        tabSwitches: message.payload?.count || (previous[candidateId]?.tabSwitches || 0) + 1,
+                        tabSwitches: Math.max(previous[candidateId]?.tabSwitches || 0, Number(message.payload?.count) || 0),
                         currentlyAway: true,
                         lastAlert: message.payload?.occurredAt || new Date().toISOString(),
                     },
@@ -277,29 +269,32 @@ export default function MonitorPage() {
         }
     };
 
-    // Live alerts from Firebase
+    // Persistent history must never replace transient WebSocket away/fullscreen flags.
     useEffect(() => {
-        const alertsRef = ref(db, `alerts/${sessionCode}`);
+        if (!firebaseDatabase) return;
+        let active = true;
+        const alertsRef = ref(firebaseDatabase, `alerts/${sessionCode}`);
         const unsub = onValue(alertsRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) setAlerts(data);
-        });
-        return () => unsub();
-    }, [sessionCode]);
+            if (active && data) setAlerts(previous => mergeAlertHistory(previous, data));
+        }, () => { if (active) setFirebaseWarning('Firebase alert history unavailable.'); });
+        return () => { active = false; unsub(); };
+    }, [sessionCode, firebaseDatabase]);
 
     useEffect(() => {
-        if (!liveCode || realtimeStatus === 'connected') return;
-        const codeRef = ref(db, `documents/${sessionCode}`);
+        if (!liveCode || realtimeStatus === 'connected' || !firebaseDatabase) return;
+        let active = true;
+        const codeRef = ref(firebaseDatabase, `documents/${sessionCode}`);
         const unsub = onValue(codeRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) {
+            if (active && data) {
                 const content = data.content || '';
                 candidateCodeRef.current = content;
                 setCandidateCode(content);
             }
-        });
-        return () => unsub();
-    }, [liveCode, sessionCode, realtimeStatus]);
+        }, () => { if (active) setFirebaseWarning('Firebase code fallback unavailable.'); });
+        return () => { active = false; unsub(); };
+    }, [liveCode, sessionCode, realtimeStatus, firebaseDatabase]);
 
     const loadReport = async (candidateId) => {
         try {
@@ -389,6 +384,11 @@ export default function MonitorPage() {
 
     return (
         <div className="min-h-screen text-white pb-16 relative">
+            {(firebase.error || firebaseWarning) && (
+                <div role="status" className="px-6 py-2 text-xs text-amber bg-amber/10">
+                    {firebase.error || firebaseWarning}
+                </div>
+            )}
             {/* Navbar */}
             <header className="px-6 py-3.5 border-b border-white/10 glass-subtle sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">

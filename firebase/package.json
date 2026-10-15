@@ -1,0 +1,13 @@
+{
+  "name": "codelock-firebase-rules-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only database --project demo-codelock \"node --test tests/rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.0",
+    "firebase": "12.6.0",
+    "firebase-tools": "14.22.0"
+  }
+}
