@@ -152,10 +152,6 @@ public class SessionService {
         return response;
     }
 
-    public Map<String, Object> getSessionByCode(String code) {
-        return getSessionByCode(code, null);
-    }
-
     public Map<String, Object> getSessionByCode(String code, String email) {
         Map<String, Object> response = new HashMap<>();
         InterviewSession session = applyExpiration(sessionRepository.findBySessionCode(code).orElse(null));
@@ -233,19 +229,6 @@ public class SessionService {
         response.put("aiTranscript", session.getAiTranscript() != null ? session.getAiTranscript() : "");
         response.put("aiReportJson", session.getAiReportJson() != null ? session.getAiReportJson() : "");
         return response;
-    }
-
-    @Transactional
-    public Map<String, Object> updateAiProcessing(String code, String status, String transcript, String reportJson) {
-        InterviewSession session = sessionRepository.findBySessionCode(code).orElse(null);
-        if (session == null) {
-            return Map.of("error", "Session not found");
-        }
-        session.setAiStatus(status);
-        if (transcript != null) session.setAiTranscript(transcript);
-        if (reportJson != null) session.setAiReportJson(reportJson);
-        sessionRepository.save(session);
-        return Map.of("message", "AI status updated", "aiStatus", status);
     }
 
     public Map<String, Object> endSession(String code, String email) {

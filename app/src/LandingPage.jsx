@@ -155,7 +155,7 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-base sm:text-lg text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
-          CodeLock combines a real-time collaborative code editor with intelligent proctoring,
+          CodeLock combines a real-time candidate code mirror with intelligent proctoring,
           live video calling, focus monitoring, and automated risk scoring in one unified platform.
         </p>
 

@@ -1,6 +1,6 @@
 # Phase 1C: retained audio and interview reliability
 
-This change is local only. No Firebase rules, services, or application deployments have been published.
+Repository changes do not publish Firebase rules, services, or application deployments. Verify each environment's deployed configuration separately.
 
 ## Configuration and restart
 
@@ -36,7 +36,7 @@ Only the owning interviewer can upload, inspect AI status/history, or POST `/api
 - Frontend/relay: `node --test tests/*.test.mjs` in `app` (20 tests), production Vite build, ESLint on frontend sources and Node relay with Node globals.
 - Firebase: `npm test` in `firebase` (8 emulator rules tests; demo project only).
 - Python: `python -m unittest test_reliability.py` and `python -m py_compile interview_ai.py gemini_copilot.py` in `AI` (3 tests; mocked Gemini).
-- Full `npm run lint` currently treats the Node relay as browser code and reports seven pre-existing `process`/`Buffer` no-undef errors. Its configuration is left unchanged; frontend lint and relay lint with explicit Node globals are checked separately.
+- Full `npm run lint` covers browser code and the Node relay. Phase 2A added a file-scoped Node globals configuration for the relay, so the normal command passes without runtime changes.
 
 No paid API requests, real two-browser media tests, real MySQL migration, or deployment are part of these automated checks.
 

@@ -1,14 +1,14 @@
-# InterviewShield Agent Guide
+# CodeLock Agent Guide
 
 ## Project Overview
 
-InterviewShield is a full-stack web platform for remote technical interviews. Interviewers create interview sessions with a problem statement and a unique session code. Candidates join a session, write JavaScript in a Monaco editor, and submit code. The app currently logs suspicious activity such as tab switching and webcam snapshots, and interviewers can view reports.
+CodeLock is a full-stack web platform for remote technical interviews. Interviewers create sessions with a problem statement and unique code. Candidates complete readiness checks, join one assigned session, use Monaco, and submit code. The platform provides live video/audio, integrity monitoring, durable reports, and retryable AI transcription and assessment.
 
 ## Repository Structure
 
 - `app/`: React + Vite frontend.
 - `app/src/`: Main frontend pages and UI logic.
-- `app/ws-server.js`: Existing Node WebSocket server intended for Yjs collaborative editing. It is not currently wired into the React app.
+- `app/ws-server.js`: Authenticated Node WebSocket relay for code sync, presence, integrity notifications, and WebRTC signaling.
 - `backend/`: Spring Boot backend.
 - `backend/src/main/java/com/interviewshield/backend/`: Controllers, DTOs, models, repositories, services, and security.
 - `backend/src/main/resources/application.properties`: Backend environment and database config.
@@ -23,20 +23,14 @@ Currently used:
 - Tailwind CSS
 - Monaco editor through `@monaco-editor/react`
 - Axios for REST calls
-- Firebase Realtime Database for current live code sync and live tab alerts
+- Native `ws` WebSocket relay for primary realtime behavior
+- Firebase Realtime Database for authenticated code fallback and alert history
+- WebRTC and browser MediaRecorder for interview media and interviewer recording
 - Spring Boot 3.2.5
 - Spring Security
 - JWT authentication
 - Spring Data JPA
 - MySQL
-
-Present but not meaningfully integrated into the app:
-
-- `ws`
-- `yjs`
-- `y-websocket`
-- `y-webrtc`
-- `y-monaco`
 
 ## Current Frontend/Backend Communication
 
@@ -53,10 +47,10 @@ The backend handles:
 - activity log persistence
 - report generation
 
-The frontend currently uses Firebase for:
+The frontend uses the Node relay for primary realtime code, presence, integrity notifications, and WebRTC signaling. It uses authenticated Firebase access for:
 
-- live candidate code mirroring
-- live tab-switch alerts
+- persistent candidate code fallback/recovery
+- accumulated integrity alert history
 
 ## Database and Environment Configuration
 
@@ -66,6 +60,11 @@ The backend expects these environment variables:
 DB_URL
 DB_USER
 DB_PASSWORD
+JWT_SECRET
+FIREBASE_PROJECT_ID
+FIREBASE_SERVICE_ACCOUNT_PATH
+AI_BASE_URL
+AUDIO_STORAGE_DIR
 ```
 
 Example local database URL:
@@ -118,7 +117,7 @@ Do not log tokens, passwords, webcam data, submitted code, or private user data 
 - Prefer existing project patterns unless there is a clear maintainability problem.
 - Preserve REST API response shapes unless intentionally migrating them.
 - Avoid mixing durable data responsibilities with realtime-only responsibilities.
-- Do not remove Firebase, snapshots, or Yjs-related dependencies until replacement behavior exists and is verified.
+- Preserve Firebase fallback/history and its custom-token authorization unless a task explicitly changes that architecture.
 - If adding realtime code later, keep WebSocket message types explicit and session-scoped.
 
 ## Testing Expectations
@@ -152,21 +151,16 @@ When WebSocket/WebRTC work begins, also verify:
 Current implemented realtime behavior:
 
 - An authenticated, session-isolated Node WebSocket relay at `app/ws-server.js` is used by the React app for candidate-authoritative code synchronization and presence.
-- Firebase Realtime Database remains as a temporary fallback for code mirroring and tab-switch counts.
+- Firebase Realtime Database remains an authenticated fallback for code recovery and durable alert counts.
 - Tab switches are persisted through REST and also sent as WebSocket alerts.
 - WebRTC uses that WebSocket relay solely for session-scoped offer/answer/ICE signaling; media travels peer-to-peer.
-- Webcam snapshots are still periodically captured and stored through REST logs as a legacy system.
+- The interviewer records mixed interview audio; failed AI processing retains private filesystem audio for an owner-only retry window.
 
-Planned but NOT implemented yet:
-
-- Removal of Firebase realtime sync after WebSocket behavior is manually verified.
-- Removal of webcam snapshots after live video behavior is manually verified.
-
-Planned architecture:
+Current architecture:
 
 - Spring Boot + MySQL handle REST and durable data.
 - WebSocket handles realtime messages.
 - WebRTC handles camera and microphone media.
 - WebSocket carries WebRTC signaling only, not video/audio.
 - Candidate remains the only code editor; interviewer receives a read-only mirror.
-- Yjs/CRDT/OT should not be used unless simultaneous multi-user editing becomes a concrete requirement.
+- Yjs/CRDT/OT is not used because editing is candidate-authoritative rather than collaborative.

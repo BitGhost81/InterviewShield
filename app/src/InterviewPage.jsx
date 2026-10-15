@@ -63,7 +63,6 @@ export default function InterviewPage() {
     const { status: realtimeStatus, presence, send: sendRealtime } = useRealtimeSession({
         sessionCode: activeSessionCode,
         role: 'candidate',
-        userId: candidateId,
         token,
         onMessage: (message) => {
             if (message.type === MESSAGE_TYPES.ERROR && message.payload?.code === 'session_ended') {

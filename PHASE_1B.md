@@ -1,7 +1,8 @@
 # Phase 1B: secure Firebase fallback and history
 
 Firebase is retained. Node WebSocket remains primary for live code, presence and
-signaling. No Firebase Console changes have been published by this implementation.
+signaling. Repository changes cannot publish Firebase Console configuration;
+verify each environment's deployed rules against `firebase/database.rules.json`.
 
 ## How authorization works
 

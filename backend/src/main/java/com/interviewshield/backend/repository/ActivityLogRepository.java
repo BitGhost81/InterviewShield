@@ -10,8 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.interviewshield.backend.model.ActivityLog;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long>{
-	List<ActivityLog> findBySessionCodeAndCandidateId(String sessionCode, Long CandidateId);
-	List<ActivityLog> findBySessionCode(String sessionCode);
 	List<ActivityLog> findBySessionCodeOrderByCreatedAtAscIdAsc(String sessionCode);
 	List<ActivityLog> findBySessionCodeAndCandidateIdOrderByCreatedAtAscIdAsc(String sessionCode, Long candidateId);
 	Optional<ActivityLog> findTopBySessionCodeAndCandidateIdIsNotNullOrderByCreatedAtDesc(String sessionCode);

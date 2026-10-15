@@ -12,7 +12,7 @@
 **CodeLock** (formerly *InterviewShield*) is an **AI-Powered Remote Technical Interview Platform**. It provides an end-to-end environment for real-time technical assessments featuring:
 1. Candidate live code mirroring (Monaco editor).
 2. Direct peer-to-peer audio/video calling (WebRTC).
-3. Proctoring / integrity monitoring (tab-switching detection, blur/focus tracking, fullscreen enforcement, and periodic webcam snapshots).
+3. Proctoring / integrity monitoring (tab-switching compatibility, blur/focus tracking, and fullscreen enforcement).
 4. AI Copilot for interviewers during the interview.
 5. Post-interview automated audio transcription, speaker diarization, and structured technical/behavioral assessment reports powered by Google Gemini.
 
@@ -30,13 +30,12 @@
 5. **Monitoring Room:** Interviewer enters `/monitor/{sessionCode}`.
    - Read-only live code mirror of candidate's Monaco editor.
    - WebRTC live audio/video connection with candidate.
-   - Live activity alerts panel (tab switches, focus loss, fullscreen exit) and snapshot gallery.
+   - Live activity alerts panel (focus loss and fullscreen exit) backed by durable REST logs.
    - AI Copilot side-panel for real-time assistant queries.
    - Real-time audio recording of the conversation.
 6. **Session Completion & Report:**
-   - Interviewer clicks "End Session", triggering `POST /api/sessions/{sessionCode}/end`.
-   - The audio recording blob is uploaded via `POST /api/sessions/{sessionCode}/process-audio`.
-   - Backend asynchronously forwards audio to Python AI service (`http://127.0.0.1:8000/process-audio`).
+   - Interviewer clicks "End Session"; finalized audio is first uploaded to `POST /api/sessions/{sessionCode}/process-audio`, then the session is ended.
+   - Spring retains failed recordings in private filesystem storage for an owner-only retry and forwards jobs through configurable `AI_BASE_URL`.
    - Interviewer views the AI-generated transcript and structured report (`GET /api/sessions/{sessionCode}/ai-report`).
 
 #### Candidate Flow:
@@ -59,7 +58,7 @@
 
 | Layer | Technologies & Libraries | Port / Address |
 |---|---|---|
-| **Frontend** | React 19, Vite, Tailwind CSS, React Router v6, Axios, Lucide React, Monaco Editor (`@monaco-editor/react`), Firebase Realtime Database SDK (`firebase/app`, `firebase/database`) | `https://localhost:5173` |
+| **Frontend** | React 19, Vite, Tailwind CSS, React Router, Axios, Monaco Editor (`@monaco-editor/react`), Firebase Realtime Database SDK | `https://localhost:5173` |
 | **Backend** | Spring Boot 3.2.5, Java 17/21, Spring Data JPA, Spring Security (Stateless JWT), MySQL Connector/J, jjwt (`0.11.5`), Jackson | `http://localhost:8081` |
 | **Database** | MySQL 8.x | Port `3306` (configured via `DB_URL`) |
 | **Realtime Server** | Node.js (ESM), `ws` library, Node native `https` & `crypto` | `wss://0.0.0.0:1234` |
@@ -73,15 +72,13 @@
 
 ```
 InterviewSheild/
-├── .env.example                       # Root environment template
 ├── .gitignore                         # Git ignore definitions
 ├── CODEX_HANDOFF.md                   # THIS DOCUMENT (Source of truth)
 ├── README.md                          # Project documentation
 ├── AI/                                # Python AI services
 │   ├── gemini_copilot.py              # HTTP server (port 8000): /chat & /process-audio endpoints
 │   ├── interview_ai.py                # Core Gemini transcription + analysis logic with retry
-│   ├── requirements.txt               # python-dotenv
-│   └── test_ai.py                     # AI sanity check script
+│   └── test_reliability.py            # Mocked AI retry/bounds tests
 ├── app/                               # React + Vite frontend
 │   ├── index.html                     # Entry HTML (Branded "CodeLock")
 │   ├── package.json                   # React 19 dependencies & scripts
@@ -114,8 +111,8 @@ InterviewSheild/
 │           │   ├── controller/
 │           │   │   ├── AuthController.java        # /api/auth/register, /api/auth/login
 │           │   │   ├── SessionController.java     # /api/sessions/*, ready, readiness, process-audio
-│           │   │   ├── ActivityLogController.java # /api/activity/* (audit logs & snapshots)
-│           │   │   └── ReportController.java      # /api/reports/* (integrity calculation)
+│           │   │   ├── ActivityLogController.java # /api/logs/* activity and integrity reports
+│           │   │   └── FirebaseAuthController.java # owner/participant custom-token issuance
 │           │   ├── dto/                           # Request/response DTOs
 │           │   ├── model/
 │           │   │   ├── User.java                  # User credentials & roles
@@ -128,11 +125,14 @@ InterviewSheild/
 │           │   │   └── SecurityConfig.java        # Security filter chain & CORS rules
 │           │   └── service/
 │           │       ├── AuthService.java
-│           │       ├── SessionService.java        # Session logic, readiness & AI orchestration
+│           │       ├── SessionService.java        # Session logic and readiness
+│           │       ├── SessionAuthorizationService.java
+│           │       ├── FirebaseTokenService.java
+│           │       ├── AudioProcessingService.java
 │           │       └── ActivityLogService.java
 │           └── resources/
 │               └── application.properties         # Database connection, port 8081, upload limits
-└── design/                            # Architectural docs & diagrams
+└── firebase/                          # RTDB rules and emulator tests
 ```
 
 ---
@@ -171,7 +171,7 @@ InterviewSheild/
 4. **AI Audio & Report Path:**
    - The interviewer's browser records combined audio using `MediaStreamDestination` + `MediaRecorder`.
    - On session end, audio is sent as `multipart/form-data` to Spring Boot (`POST /api/sessions/{code}/process-audio`).
-   - Spring Boot spawns a background thread that Base64 encodes audio and sends it to Python (`http://127.0.0.1:8000/process-audio`).
+   - Spring Boot saves the recording privately, claims a bounded background job, and sends it to Python at configured `AI_BASE_URL`.
    - Python invokes Gemini transcription (`gemini-3.5-transcribe`), then feeds the transcript into Gemini evaluation (`gemini-2.5-flash`), returning structured JSON. Spring Boot persists the result to `InterviewSession` (`aiTranscript`, `aiReportJson`, `aiStatus = "COMPLETED"`).
 
 ---
@@ -334,8 +334,8 @@ Defined in `app/src/realtime/messages.js`:
 - `id` (Long, PK)
 - `sessionCode` (String)
 - `candidateId` (Long)
-- `eventType` (String, e.g. `TAB_SWITCH`, `FOCUS_LOST`, `FULLSCREEN_EXIT`, `SNAPSHOT`)
-- `eventData` (TEXT, JSON metadata or Base64 snapshot)
+- `eventType` (String, e.g. `TAB_SWITCH`, `FOCUS_LOST`, `FULLSCREEN_EXIT`, `CODE_SUBMIT`)
+- `eventData` (TEXT event metadata or submitted code)
 - `createdAt` (LocalDateTime)
 
 ### Key REST Endpoints
@@ -348,9 +348,11 @@ Defined in `app/src/realtime/messages.js`:
 - `GET /api/sessions/{code}/readiness` — Query readiness status and candidate photo.
 - `POST /api/sessions/{code}/end` — Mark session ended.
 - `POST /api/sessions/{code}/process-audio` — Submit recorded audio for AI report generation (Async 202).
+- `POST /api/sessions/{code}/retry-audio` — Retry retained audio processing (owning interviewer only).
 - `GET /api/sessions/{code}/ai-report` — Retrieve generated transcript and evaluation.
-- `POST /api/activity/log` — Record proctoring events.
-- `GET /api/activity/{code}` — Fetch activity logs and snapshots for interviewer.
+- `POST /api/logs` — Record candidate activity with server-derived identity.
+- `GET /api/logs/{code}` — Fetch ordered activity logs for the owning interviewer.
+- `GET /api/logs/{code}/{candidateId}` — Fetch the deterministic integrity report.
 
 ---
 
@@ -364,9 +366,9 @@ Defined in `app/src/realtime/messages.js`:
 
 ---
 
-## 11. Recent Implemented Changes
+## 11. Implemented Foundation
 
-The following changes were completed in the current working tree and are currently uncommitted:
+Phases 1A-1C added authenticated participant identity, Firebase custom-token access, retryable audio processing, automatic integrity report updates, and recording/report reliability. See the phase documents for configuration and verification details. Earlier UI and setup work includes:
 
 1. **Rebranding to CodeLock:**
    - Full user-facing rebrand from *InterviewShield* to **CodeLock** (Subtitle: *AI-Powered Remote Technical Interview Platform*).
@@ -399,50 +401,31 @@ The following changes were completed in the current working tree and are current
 - **Proctoring Telemetry:**
   - `visibilitychange` and window `blur`/`focus` listeners detect tab-switching.
   - `fullscreenchange` detects candidate leaving fullscreen.
-  - Events are immediately transmitted to the interviewer over WebSocket and persisted to MySQL via `POST /api/activity/log`.
-  - Periodic webcam snapshots are captured via HTML Canvas and sent to backend logs.
+  - Events are immediately transmitted to the interviewer over WebSocket and persisted to MySQL via `POST /api/logs`.
 - **CORS & Network Policy:** Local private IPs and localhost whitelisted in `SecurityConfig.java`. Must be scoped down before public deployment.
 
 ---
 
 ## 13. Known Limitations & Technical Debt
 
-1. **Dual Realtime Systems:**
-   - Code synchronization and alerts run over both custom WebSocket relay (`ws-server.js`) and Firebase Realtime Database.
-2. **Legacy Webcam Snapshots:**
-   - Periodic canvas snapshots are still persisted in MySQL `activity_logs.eventData` as Base64 strings.
-3. **Session-Scoped In-Memory WS State:**
+1. **Session-Scoped In-Memory WS State:**
    - `ws-server.js` stores rooms in an in-memory `Map`. Does not scale horizontally across multiple Node processes without a Redis Pub/Sub adapter.
-4. **Browser-Based Code Execution:**
+2. **Single-Instance Recording Storage:**
+   - Retryable audio is stored on the Spring host filesystem. Multiple backend instances would require coordinated storage and job ownership.
+3. **Browser-Based Code Execution:**
    - Candidate code execution uses browser-side `new Function(...)` or eval, without an isolated sandboxed runner.
+4. **Local TLS Discovery:**
+   - Vite and the relay scan the app directory for local certificates. Production should terminate HTTPS/WSS through the deployment proxy and use explicit service configuration.
 
 ---
 
 ## 14. Legacy Cleanup Candidates & Plan
 
-### Candidate 1: Firebase Realtime Database
-- **Current State:** Still actively imported and utilized in `InterviewPage.jsx` (lines 4-5, 13-24, 180-260) and `MonitorPage.jsx` (lines 3-4, 14-25, 275-295) as a fallback mechanism for code updates and tab alerts.
-- **Code Evidence:**
-  ```javascript
-  // InterviewPage.jsx & MonitorPage.jsx:
-  import { initializeApp, getApps } from 'firebase/app';
-  import { getDatabase, ref, update, increment, onValue } from 'firebase/database';
-  ```
-- **Safe Removal Strategy:**
-  1. Verify that `ws-server.js` code sync and tab alerts run reliably in all target environments.
-  2. Remove Firebase initialization, `onValue` subscriptions, and database ref updates from `InterviewPage.jsx` and `MonitorPage.jsx`.
-  3. Remove `firebase` package from `app/package.json`.
+Firebase is active architecture, not a cleanup candidate. It provides authenticated code recovery and persistent alert history. The `firebase` browser SDK and Firebase Admin dependency must remain.
 
-### Candidate 2: Yjs and CRDT Packages
-- **Current State:** `yjs`, `y-websocket`, `y-webrtc`, and `y-monaco` are listed in `app/package.json` dependencies.
-- **Code Evidence:** A codebase-wide search confirms **zero imports** of `yjs` or any `y-*` package in `app/src/` or `app/ws-server.js`.
-- **Safe Removal Strategy:**
-  - Run `npm uninstall yjs y-websocket y-webrtc y-monaco` in `app/`. No code changes required.
+Yjs/CRDT packages were removed in Phase 2A after repository-wide reference checks confirmed that the native `ws` relay and React application never imported them.
 
-### Candidate 3: Periodic Webcam Snapshots in Activity Logs
-- **Current State:** With live WebRTC video working, periodic canvas snapshots stored in MySQL represent unnecessary database bloat.
-- **Safe Removal Strategy:**
-  - Once live video monitoring is deemed sufficient, disable snapshot intervals in `InterviewPage.jsx` and deprecate snapshot event processing.
+Questionable compatibility paths should remain until their consumers are verified. This includes the legacy `TAB_SWITCH` report calculation and both POST/PUT support for the end-session endpoint.
 
 ---
 
@@ -481,42 +464,14 @@ The following changes were completed in the current working tree and are current
 
 ---
 
-## 17. Current Git State & Modified Files
+## 17. Git state
 
-### Branch & Commit State
-- **Branch:** `feature/realtime-code-sync`
-- **Latest Commit:** `0715fbd Make local network setup Wi-Fi independent`
-
-### Uncommitted Files
-```
- M .gitignore
- M AI/interview_ai.py
- M README.md
- M app/.env.example
- M app/index.html
- M app/src/App.jsx
- M app/src/Auth.jsx
- M app/src/Dashboard.jsx
- M app/src/InterviewPage.jsx
- M app/src/LandingPage.jsx
- M app/src/MonitorPage.jsx
- M app/src/hooks/useWebRTCCall.js
- M app/ws-server.js
- M backend/src/main/java/com/interviewshield/backend/controller/SessionController.java
- M backend/src/main/java/com/interviewshield/backend/model/InterviewSession.java
- M backend/src/main/java/com/interviewshield/backend/service/SessionService.java
-?? app/src/SetupPage.jsx
-```
+Development continues on `feature/realtime-code-sync`. Always inspect the live branch, HEAD, and working tree instead of relying on a commit hash recorded in documentation.
 
 ---
 
 ## 18. Immediate Next Steps for Codex / Future Agents
 
-1. **Review and Verify Working Tree:**
-   - Run manual or automated sanity checks across the modified files to ensure end-to-end stability.
-2. **Execute Stage 1 Legacy Cleanup:**
-   - Remove unused Yjs packages (`npm uninstall yjs y-websocket y-webrtc y-monaco` in `app/`).
-3. **Execute Stage 2 Legacy Cleanup (Firebase Deprecation):**
-   - Remove Firebase fallback code sync and alert listeners from `InterviewPage.jsx` and `MonitorPage.jsx` once satisfied with WebSocket reliability.
-4. **Commit & Push:**
-   - Create a clean git commit bundling the rebrand, setup flow, readiness backend logic, and WebSocket fixes.
+1. Keep Firebase fallback/history, WebSocket authorization, WebRTC, audio retention/retry, and report calculations covered during future changes.
+2. Prepare the documented single-instance deployment with persistent MySQL and recording storage, HTTPS/WSS, process supervision, logs, health checks, and TURN.
+3. Treat horizontal scaling and sandboxed code execution as separate architecture projects rather than cleanup work.

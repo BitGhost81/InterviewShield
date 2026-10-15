@@ -1,6 +1,6 @@
 # InterviewShield Realtime Architecture
 
-This document describes the implemented realtime architecture. Firebase and webcam snapshots remain temporarily as documented fallback/legacy systems.
+This document describes the implemented realtime architecture after Phases 1A-1C. Firebase is an authenticated fallback/history store and remains part of the supported architecture.
 
 ## Target Architecture
 
@@ -9,21 +9,20 @@ This document describes the implemented realtime architecture. Firebase and webc
 - WebRTC: 1-to-1 camera and microphone media.
 - WebSocket carries WebRTC signaling.
 - WebSocket carries live candidate-to-interviewer code synchronization.
-- WebSocket carries presence and may carry live tab-switch alerts.
-- Firebase realtime synchronization will be removed after replacement.
-- Webcam snapshots will be removed after live video is working.
-- Yjs/CRDT/OT should not be used unless multiple users need to edit the same document at the same time.
+- WebSocket carries presence and live integrity notifications.
+- Firebase stores candidate code recovery snapshots and accumulated alert history under default-deny rules.
+- REST/MySQL stores durable activity logs and report data.
+- Yjs/CRDT/OT is not used because only the candidate edits code.
 
 ## A. WebSocket Message Protocol
 
-All messages should be JSON objects with a shared envelope:
+Messages are JSON objects with a shared envelope. Clients provide type, session, role, and payload; the relay replaces sender identity fields with authenticated values before forwarding:
 
 ```json
 {
   "type": "message_type",
   "sessionCode": "ABC123",
   "senderRole": "candidate",
-  "senderId": "42",
   "payload": {}
 }
 ```
@@ -32,8 +31,8 @@ Recommended shared fields:
 
 - `type`: message type.
 - `sessionCode`: interview session room.
-- `senderRole`: `candidate` or `interviewer`.
-- `senderId`: authenticated user id when available.
+- `senderRole`: claimed `candidate` or `interviewer`; checked against the JWT.
+- `senderId`: added by the relay from validated identity and never trusted from client input.
 - `payload`: message-specific data.
 - `messageId`: optional client-generated id for debugging/deduplication.
 - `sentAt`: optional ISO timestamp for debugging.
@@ -43,16 +42,15 @@ Recommended shared fields:
 - Sender: candidate or interviewer.
 - Receiver: WebSocket server.
 - Purpose: register a socket into a session room.
-- Required fields: `sessionCode`, `senderRole`, `senderId`.
+- Required fields: `sessionCode`, `senderRole`, and `payload.token`.
 
 ```json
 {
   "type": "join_session",
   "sessionCode": "ABC123",
   "senderRole": "candidate",
-  "senderId": "42",
   "payload": {
-    "token": "jwt-token-if-used"
+    "token": "jwt-token"
   }
 }
 ```
@@ -433,13 +431,12 @@ Keep the structure small and understandable:
   - Message type constants and small builders.
 - `src/hooks/useRealtimeSession.js`
   - Join/leave session and presence state.
-- `src/hooks/useLiveCodeSync.js`
-  - Candidate sends snapshots/deltas.
-  - Interviewer applies read-only updates.
+- `src/InterviewPage.jsx` and `src/MonitorPage.jsx`
+  - Candidate sends snapshots/deltas; interviewer applies read-only updates.
 - `src/hooks/useWebRTCCall.js`
   - Local media, peer connection, signaling, remote stream, cleanup.
-- `src/hooks/useTabSwitchAlert.js`
-  - REST log plus optional WebSocket live alert.
+- `src/realtime/reportRefresh.js`
+  - Coalesces event-driven REST report rereads.
 - `src/components/VideoCallPanel.jsx`
   - Local and remote video display.
 - `src/components/ConnectionStatus.jsx`
@@ -447,89 +444,22 @@ Keep the structure small and understandable:
 
 Avoid a large framework-like abstraction. The first version only needs one candidate and one interviewer.
 
-## F. Backend / Server Structure Recommendation
+## F. Implemented Server Structure
 
-For this project, start with a separate Node WebSocket server, replacing the current `app/ws-server.js`.
+`app/ws-server.js` is the active Node `ws` relay. It validates the shared Spring/Node JWT secret, confirms participation with Spring, derives sender identity from authenticated claims, and maintains one candidate and one owning interviewer per in-memory session room. It routes code snapshots/deltas/resync, presence, committed-activity notifications, integrity state, and WebRTC signaling.
 
-Why:
+The React client uses `realtimeClient.js` and `useRealtimeSession.js` for join, leave, reconnect, and message delivery. Candidate edits are authoritative; the interviewer mirror is read-only. Reconnect requests a fresh snapshot rather than merging concurrent documents.
 
-- The project already has a Node frontend workspace and `ws` dependency.
-- WebRTC signaling and code relay are lightweight.
-- It avoids adding Spring WebSocket complexity before the architecture is proven.
-- The realtime server can stay simple and easy to inspect.
+Firebase is deliberately separate from the primary relay. Candidates back up versioned code and monotonic alert history through short-lived custom-token access. Interviewers receive owner-scoped read access. Firebase values never replace newer candidate code or transient WebSocket flags.
 
-Tradeoff:
+## G. Preservation and scaling boundaries
 
-- Auth/session validation is easier to centralize inside Spring Boot.
-- If production deployment needs one backend service, moving WebSocket into Spring Boot later may be cleaner.
-
-Recommendation:
-
-- Phase 1: use a simple Node `ws` server.
-- Phase 2: if deployment/auth becomes painful, move realtime into Spring Boot.
-
-The existing `app/ws-server.js` currently uses `y-websocket` and was likely intended for collaborative editing. Since the agreed design does not use Yjs, it should eventually be replaced or deleted.
-
-## G. Migration Plan
-
-1. Realtime protocol/server
-   - Define message types first.
-   - Replace current Yjs-style `ws-server.js` with a simple room router.
-
-2. Frontend WebSocket client
-   - Add one shared connection wrapper.
-   - Handle join, leave, reconnect, send, and receive.
-
-3. Live-code synchronization
-   - Candidate sends initial `code_snapshot`.
-   - Candidate sends `code_delta`.
-   - Interviewer applies deltas to read-only Monaco.
-   - Add `code_resync` fallback.
-   - Keep Firebase temporarily until WebSocket sync is verified.
-
-4. Realtime alerts
-   - Send `tab_switch` through WebSocket.
-   - Continue REST persistence for reports.
-   - Remove Firebase alerts after parity.
-
-5. WebRTC signaling
-   - Add offer/answer/ICE message routing.
-   - Verify signaling before building polished video UI.
-
-6. Video/audio UI
-   - Add local and remote video panels.
-   - Add permission, loading, connected, and failed states.
-
-7. Remove snapshots
-   - Stop snapshot interval.
-   - Stop writing `WEBCAM_SNAPSHOT` logs.
-   - Remove snapshot UI from reports.
-
-8. Remove Firebase
-   - Remove Firebase code sync and alert listeners.
-   - Remove Firebase config after no references remain.
-
-9. Remove unused Yjs/WebSocket dependencies/code
-   - Remove Yjs-related dependencies if unused.
-   - Delete or replace old `ws-server.js` once the new server exists.
-
-10. Update reports/risk logic
-   - Remove snapshot count from report.
-   - Revisit risk score formula.
-   - Keep response shape as stable as possible.
-
-11. Tests and cleanup
-   - Add backend tests for report changes.
-   - Manually verify realtime browser flows.
-   - Add focused frontend tests only for extracted pure logic where practical.
-
-Dependencies:
-
-- WebSocket protocol must exist before code sync or signaling.
-- Code sync should migrate before Firebase removal.
-- WebRTC signaling must exist before live video can work.
-- Snapshot removal should happen only after video/audio is usable.
-- Report/risk changes should happen after snapshot removal.
+- Spring/MySQL remains authoritative for participant admission, session lifecycle, activity logs, and reports.
+- The relay holds room state in memory and therefore assumes one Node process. Horizontal scaling would require shared room/pub-sub state.
+- WebRTC media remains peer-to-peer; the relay carries signaling only. Production reliability depends on configured TURN credentials.
+- Firebase remains required for fallback/history and must not be made public.
+- Integrity summaries refresh by rereading REST data after WebSocket/Firebase notifications; those notifications do not increment report counts themselves.
+- Any future collaborative editing requirement would need a separate design decision. Yjs is not part of the current protocol.
 
 ## H. Risks and Handling
 

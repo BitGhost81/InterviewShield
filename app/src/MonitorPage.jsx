@@ -118,7 +118,6 @@ export default function MonitorPage() {
     const { status: realtimeStatus, presence, send: sendRealtime } = useRealtimeSession({
         sessionCode: activeRealtimeSessionCode,
         role: 'interviewer',
-        userId: localStorage.getItem('userId'),
         token,
         onMessage: (message) => {
             if (message.type === MESSAGE_TYPES.ACTIVITY_SAVED || message.type === MESSAGE_TYPES.PRESENCE) reportRefreshRef.current?.trigger();
@@ -339,7 +338,7 @@ export default function MonitorPage() {
             if (controller.signal.aborted) return;
             setReport(data);
             if (data.candidateName) setCandidateNames(previous => ({ ...previous, [selectedCandidate]: data.candidateName }));
-        }, () => setOperationError('Integrity report could not refresh. Reconnect or use Refresh.'));
+        }, () => setOperationError('Integrity report could not refresh. Reconnect to try again.'));
         reportRefreshRef.current = refresh;
         refresh.trigger();
         return () => { controller.abort(); refresh.close(); if (reportRefreshRef.current === refresh) reportRefreshRef.current = null; };
@@ -677,18 +676,12 @@ export default function MonitorPage() {
                                 </h2>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div>
                                 <button
                                     onClick={() => window.print()}
                                     className="button-ghost px-4 py-2 text-xs font-semibold"
                                 >
                                     🖨 Print Report
-                                </button>
-                                <button
-                                    onClick={() => loadReport(selectedCandidate)}
-                                    className="button-primary px-4 py-2 text-xs font-semibold"
-                                >
-                                    🔄 Refresh
                                 </button>
                             </div>
                         </div>

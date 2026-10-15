@@ -26,6 +26,8 @@ After the session, CodeLock generates a detailed report containing candidate act
 - 🤖 **AI Copilot & Transcription** — AI assistant for interviewers and automated interview assessment reports
 - 📊 **Risk scoring** — Defensible, automated integrity risk scoring based on activity events
 - 📋 **Comprehensive reports** — View post-interview timeline, AI insights, and final submitted code
+- 💾 **Secure fallback/history** — Firebase RTDB uses short-lived custom-token access for code recovery and integrity history
+- 🔁 **Retryable AI processing** — Failed recordings are retained privately for an owner-only retry window
 
 ---
 
@@ -66,6 +68,18 @@ CodeLock/
 │
 ├── AI/                          # Python AI processing service (transcription & analysis)
 │
+├── firebase/                    # Realtime Database rules and emulator tests
+│
 ├── README.md                    # Project documentation
 └── SETUP.md                     # Installation and setup guide
 ```
+
+## Architecture
+
+- Spring Boot and MySQL own authentication, authorization, sessions, readiness, activity logs, reports, and recording metadata.
+- The authenticated Node WebSocket relay is primary for candidate-authoritative code mirroring, presence, integrity notifications, and WebRTC signaling.
+- Firebase RTDB remains an authenticated fallback for Monaco recovery and persistent alert history.
+- WebRTC carries peer-to-peer media. TURN can be configured for restrictive networks.
+- The interviewer records mixed call audio. Spring stores failed recordings in a private filesystem directory for explicit retry and forwards processing to the Python/Gemini service.
+
+See [SETUP.md](SETUP.md) for current environment variables and local startup instructions. Phase-specific security and reliability details are in [PHASE_1A.md](PHASE_1A.md), [PHASE_1B.md](PHASE_1B.md), and [PHASE_1C.md](PHASE_1C.md).

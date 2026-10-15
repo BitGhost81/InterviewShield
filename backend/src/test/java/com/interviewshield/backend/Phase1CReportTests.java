@@ -33,6 +33,5 @@ class Phase1CReportTests {
         assertEquals(5L, report.get("durationMinutes"));
         assertEquals(2L, report.get("focusLosses"));
         verify(repository).findBySessionCodeAndCandidateIdOrderByCreatedAtAscIdAsc("ABC123", 2L);
-        verify(repository, never()).findBySessionCodeAndCandidateId(any(), any());
     }
 }

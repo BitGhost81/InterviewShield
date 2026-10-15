@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createRealtimeClient } from '../realtime/realtimeClient';
 import { MESSAGE_TYPES } from '../realtime/messages';
 
-export function useRealtimeSession({ sessionCode, role, userId, token, onMessage }) {
+export function useRealtimeSession({ sessionCode, role, token, onMessage }) {
     const clientRef = useRef(null);
     const onMessageRef = useRef(onMessage);
     const [status, setStatus] = useState('idle');
@@ -19,7 +19,6 @@ export function useRealtimeSession({ sessionCode, role, userId, token, onMessage
         const client = createRealtimeClient({
             sessionCode,
             role,
-            userId,
             token,
             onStatusChange: nextStatus => {
                 setStatus(nextStatus);
@@ -46,7 +45,7 @@ export function useRealtimeSession({ sessionCode, role, userId, token, onMessage
                 clientRef.current = null;
             }
         };
-    }, [sessionCode, role, userId, token]);
+    }, [sessionCode, role, token]);
 
     const send = (type, payload) => clientRef.current?.send(type, payload) || false;
 
